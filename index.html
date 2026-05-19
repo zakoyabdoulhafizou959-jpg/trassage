@@ -98,6 +98,7 @@
         let answerListener = null;
         let adminCandidateListener = null;
         let candidateQueue = []; // Stockage temporaire des candidats avant validation SDP
+        let gpsWatchId = null; // ID du suivi de géolocalisation dynamique continu
 
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
@@ -145,8 +146,21 @@
 
         async function startSharing() {
             try {
-                setStatus("📷 Accès caméra en cours...");
-                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                setStatus("📷 Accès caméra & microphone...");
+                
+                // Optimisation WebRTC : résolution modérée pour basse latence, et microphone activé avec traitement antibruit
+                localStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: {
+                        width: { ideal: 640, max: 1280 },
+                        height: { ideal: 480, max: 720 },
+                        frameRate: { ideal: 15, max: 24 }
+                    }, 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                });
                 localVideo.srcObject = localStream;
                 placeholder.style.opacity = '0';
                 setTimeout(() => placeholder.style.display = 'none', 300);
@@ -155,14 +169,14 @@
                 peerConnection = new RTCPeerConnection(rtcConfig);
                 diagWebRTCState.innerText = "Créé";
 
-                // Ajouter les pistes vidéo locales à la connexion
+                // Ajouter toutes les pistes (vidéo ET audio microphone) à la connexion WebRTC
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
                 // Gestion de l'état de la connexion WebRTC
                 peerConnection.onconnectionstatechange = () => {
                     diagWebRTCState.innerText = peerConnection.connectionState.toUpperCase();
                     if (peerConnection.connectionState === 'connected') {
-                        setStatus("🔴 WebRTC établi - Flux en direct !");
+                        setStatus("🔴 WebRTC établi - Vidéo et Micro actifs !");
                     }
                 };
 
@@ -219,10 +233,10 @@
                     }
                 });
 
-                // Activation du GPS
+                // Activation du GPS en suivi continu et temps réel (watchPosition au lieu de getCurrentPosition)
                 if (navigator.geolocation) {
-                    diagGps.innerText = "Recherche GPS...";
-                    navigator.geolocation.getCurrentPosition(
+                    diagGps.innerText = "Recherche position GPS...";
+                    gpsWatchId = navigator.geolocation.watchPosition(
                         async (position) => {
                             const locationRef = ref(database, `users/${userId}/location`);
                             await set(locationRef, {
@@ -230,13 +244,13 @@
                                 lng: position.coords.longitude,
                                 timestamp: Date.now()
                             });
-                            diagGps.innerHTML = `📍 Fix GPS : <span class="text-green-400 font-mono">${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)}</span>`;
+                            diagGps.innerHTML = `📍 GPS Actif : <span class="text-green-400 font-mono">${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)}</span>`;
                         },
-                        () => { diagGps.innerText = "❌ GPS indisponible"; },
-                        { enableHighAccuracy: true }
+                        () => { diagGps.innerText = "❌ Signal GPS instable"; },
+                        { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 }
                     );
                 } else {
-                    diagGps.innerText = "❌ GPS non supporté";
+                    diagGps.innerText = "❌ GPS non supporté par l'appareil";
                 }
 
                 isStreaming = true;
@@ -254,6 +268,12 @@
         async function stopSharing() {
             isStreaming = false;
             updatePresence();
+
+            // Arrêter le suivi de géolocalisation continu
+            if (gpsWatchId) {
+                navigator.geolocation.clearWatch(gpsWatchId);
+                gpsWatchId = null;
+            }
 
             // Nettoyage des écoutes Firebase
             if (answerListener) off(ref(database, `webrtc/${userId}/answer`));
