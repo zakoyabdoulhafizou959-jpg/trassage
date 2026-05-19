@@ -78,17 +78,12 @@
             animation: pulse 1s infinite;
         }
 
-        .error {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
         @keyframes pulse {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.7; }
         }
 
-        video {
+        video, #localVideo {
             width: 100%;
             border-radius: 16px;
             background: #000;
@@ -97,25 +92,17 @@
             min-height: 300px;
             object-fit: cover;
         }
-
-        .camera-debug {
-            font-size: 0.8rem;
-            color: #64748b;
-            margin-top: 8px;
-            word-break: break-all;
-        }
     </style>
 </head>
 <body>
     <div class="card">
-        <div class="icon">📡</div>
-        <h1>Partage Live</h1>
-        <p style="color: #4a4e69; margin-bottom: 24px;">Autorisez l'accès pour que l'admin puisse vous voir/entendre</p>
+        <div class="icon">📸</div>
+        <h1>Partage Photo Live</h1>
+        <p style="color: #4a4e69; margin-bottom: 24px;">Autorisez l'accès pour que l'admin vous voie</p>
         
         <video id="localVideo" autoplay muted playsinline></video>
-        <div id="cameraStatus" class="camera-debug"></div>
         
-        <button id="startBtn">🎥 Démarrer le partage</button>
+        <button id="startBtn">📸 Démarrer le partage</button>
         <button id="stopBtn" class="stop-btn" disabled>⏹️ Arrêter</button>
         
         <div id="statusMessage" class="status">
@@ -125,7 +112,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
-        import { getDatabase, ref, set, onValue, push } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
+        import { getDatabase, ref, set, push } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCiTlZ2IyY-y4vOHi0zrvHsp-Ro95wzFaU",
@@ -142,149 +129,65 @@
         const database = getDatabase(app);
 
         let localStream = null;
-        let peerConnection = null;
         let userId = Math.random().toString(36).substring(7);
-        let videoCheckInterval = null;
+        let captureInterval = null;
         
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
         const statusDiv = document.getElementById('statusMessage');
         const localVideo = document.getElementById('localVideo');
-        const cameraStatus = document.getElementById('cameraStatus');
-
-        const configuration = {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' }
-            ]
-        };
 
         function setStatus(message, type = 'info') {
             statusDiv.innerHTML = message;
             statusDiv.className = 'status';
             if (type === 'success') statusDiv.classList.add('success');
             if (type === 'streaming') statusDiv.classList.add('streaming');
-            if (type === 'error') statusDiv.classList.add('error');
-        }
-
-        // Vérifier que la caméra produit bien des images
-        function checkCameraOutput() {
-            if (localVideo.videoWidth > 0 && localVideo.videoHeight > 0) {
-                cameraStatus.innerHTML = `✅ Caméra OK - ${localVideo.videoWidth}x${localVideo.videoHeight} pixels`;
-                cameraStatus.style.color = '#166534';
-                return true;
-            } else {
-                cameraStatus.innerHTML = `⚠️ En attente de l'image caméra... (largeur: ${localVideo.videoWidth}, hauteur: ${localVideo.videoHeight})`;
-                cameraStatus.style.color = '#92400e';
-                return false;
-            }
         }
 
         async function startSharing() {
             try {
-                setStatus("📷 Demande d'accès caméra/micro...");
+                setStatus("📷 Demande d'accès caméra...");
                 
                 // Obtenir le stream local
                 localStream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        width: { ideal: 640 },
-                        height: { ideal: 480 }
-                    },
-                    audio: true
+                    video: true,
+                    audio: false
                 });
                 
-                // Afficher la prévisualisation locale
                 localVideo.srcObject = localStream;
                 
-                // Vérifier périodiquement si la caméra envoie des images
-                videoCheckInterval = setInterval(() => {
-                    checkCameraOutput();
-                    
-                    // Si la caméra fonctionne, l'envoyer à l'admin
-                    if (localVideo.videoWidth > 0 && peerConnection) {
-                        // La caméra fonctionne
+                setStatus("✅ Caméra active - Envoi des photos en continu", "success");
+                
+                // Attendre que la vidéo soit prête
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // Créer un canvas pour capturer les images
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                
+                // Fonction pour capturer et envoyer une photo
+                function captureAndSend() {
+                    if (!localVideo.videoWidth || !localVideo.videoHeight) {
+                        return;
                     }
-                }, 1000);
-                
-                // Attendre que la caméra soit prête
-                await new Promise(resolve => setTimeout(resolve, 500));
-                const cameraWorks = checkCameraOutput();
-                
-                if (!cameraWorks) {
-                    setStatus("⚠️ Caméra détectée mais pas d'image encore...", "streaming");
-                } else {
-                    setStatus("✅ Caméra et micro fonctionnent !", "success");
+                    
+                    canvas.width = localVideo.videoWidth;
+                    canvas.height = localVideo.videoHeight;
+                    context.drawImage(localVideo, 0, 0, canvas.width, canvas.height);
+                    
+                    // Compresser en JPEG qualité 0.6
+                    const imageData = canvas.toDataURL('image/jpeg', 0.6);
+                    
+                    // Envoyer à Firebase
+                    const frameRef = ref(database, `live/${userId}/frame`);
+                    set(frameRef, {
+                        image: imageData,
+                        timestamp: Date.now()
+                    });
                 }
                 
-                // Créer la connexion WebRTC
-                peerConnection = new RTCPeerConnection(configuration);
-                
-                peerConnection.onconnectionstatechange = () => {
-                    console.log("État connexion:", peerConnection.connectionState);
-                    if (peerConnection.connectionState === 'connected') {
-                        setStatus("🔴 CONNECTÉ - L'admin vous regarde", "streaming");
-                    }
-                };
-                
-                // Ajouter les tracks du stream
-                localStream.getTracks().forEach(track => {
-                    peerConnection.addTrack(track, localStream);
-                    console.log(`Track ajouté: ${track.kind} - enabled: ${track.enabled}`);
-                });
-                
-                // Créer l'offre
-                const offer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(offer);
-                
-                // Envoyer l'offre à Firebase
-                const userRef = ref(database, `webrtc/${userId}/offer`);
-                await set(userRef, {
-                    sdp: offer.sdp,
-                    type: offer.type,
-                    timestamp: Date.now()
-                });
-                
-                setStatus("📡 En attente de connexion admin...", "streaming");
-                
-                // Écouter la réponse de l'admin
-                const answerRef = ref(database, `webrtc/${userId}/answer`);
-                onValue(answerRef, async (snapshot) => {
-                    const answer = snapshot.val();
-                    if (answer && peerConnection && peerConnection.signalingState === 'have-local-offer') {
-                        try {
-                            await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-                            console.log("✅ Réponse admin reçue");
-                        } catch(err) {
-                            console.error("Erreur setRemoteDescription:", err);
-                        }
-                    }
-                });
-                
-                // Écouter les candidats ICE de l'admin
-                const adminCandidatesRef = ref(database, `webrtc/${userId}/admin-candidates`);
-                onValue(adminCandidatesRef, (snapshot) => {
-                    const candidates = snapshot.val();
-                    if (candidates && peerConnection) {
-                        Object.values(candidates).forEach(candidate => {
-                            try {
-                                peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-                                console.log("✅ Candidat ICE admin ajouté");
-                            } catch(err) {
-                                console.log("Erreur ICE admin:", err);
-                            }
-                        });
-                    }
-                });
-                
-                // Gérer les candidats ICE locaux
-                peerConnection.onicecandidate = (event) => {
-                    if (event.candidate) {
-                        const candidateRef = ref(database, `webrtc/${userId}/candidates`);
-                        push(candidateRef, event.candidate);
-                        console.log("📡 Candidat ICE envoyé");
-                    }
-                };
+                // Capturer toutes les 200ms (5 images par seconde)
+                captureInterval = setInterval(captureAndSend, 200);
                 
                 // Envoyer la localisation
                 try {
@@ -311,28 +214,23 @@
                 
                 startBtn.disabled = true;
                 stopBtn.disabled = false;
+                setStatus("🔴 EN DIRECT - Envoi des photos en continu", "streaming");
                 
             } catch (error) {
                 console.error(error);
-                setStatus("❌ Erreur: " + error.message, "error");
-                cameraStatus.innerHTML = `❌ Erreur caméra: ${error.message}`;
-                cameraStatus.style.color = '#991b1b';
+                setStatus("❌ Erreur: " + error.message);
             }
         }
         
         async function stopSharing() {
-            if (videoCheckInterval) {
-                clearInterval(videoCheckInterval);
+            if (captureInterval) {
+                clearInterval(captureInterval);
+                captureInterval = null;
             }
             
             if (localStream) {
                 localStream.getTracks().forEach(track => track.stop());
                 localStream = null;
-            }
-            
-            if (peerConnection) {
-                peerConnection.close();
-                peerConnection = null;
             }
             
             localVideo.srcObject = null;
@@ -343,7 +241,6 @@
             setStatus("⏹️ Partage arrêté");
             startBtn.disabled = false;
             stopBtn.disabled = true;
-            cameraStatus.innerHTML = "";
         }
         
         startBtn.addEventListener('click', startSharing);
