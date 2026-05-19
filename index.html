@@ -53,6 +53,16 @@
             cursor: pointer;
             width: 100%;
             margin: 16px 0;
+            transition: transform 0.2s, opacity 0.2s;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
 
         .stop-btn {
@@ -65,6 +75,7 @@
             padding: 14px;
             margin-top: 20px;
             font-size: 0.9rem;
+            transition: all 0.3s ease;
         }
 
         .success {
@@ -112,8 +123,9 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
-        import { getDatabase, ref, set, push } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
+        import { getDatabase, ref, set } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
 
+        // Configuration Firebase (identique à celle fournie)
         const firebaseConfig = {
             apiKey: "AIzaSyCiTlZ2IyY-y4vOHi0zrvHsp-Ro95wzFaU",
             authDomain: "universite-taak.firebaseapp.com",
@@ -148,24 +160,22 @@
             try {
                 setStatus("📷 Demande d'accès caméra...");
                 
-                // Obtenir le stream local
+                // Obtenir l'accès à la caméra de l'utilisateur
                 localStream = await navigator.mediaDevices.getUserMedia({
-                    video: true,
+                    video: { width: { ideal: 640 }, height: { ideal: 480 } },
                     audio: false
                 });
                 
                 localVideo.srcObject = localStream;
+                setStatus("✅ Caméra active - Préparation de l'envoi", "success");
                 
-                setStatus("✅ Caméra active - Envoi des photos en continu", "success");
-                
-                // Attendre que la vidéo soit prête
+                // Attendre que la vidéo charge
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 
-                // Créer un canvas pour capturer les images
+                // Canvas invisible pour compresser et convertir les frames en Base64
                 const canvas = document.createElement('canvas');
                 const context = canvas.getContext('2d');
                 
-                // Fonction pour capturer et envoyer une photo
                 function captureAndSend() {
                     if (!localVideo.videoWidth || !localVideo.videoHeight) {
                         return;
@@ -175,10 +185,10 @@
                     canvas.height = localVideo.videoHeight;
                     context.drawImage(localVideo, 0, 0, canvas.width, canvas.height);
                     
-                    // Compresser en JPEG qualité 0.6
-                    const imageData = canvas.toDataURL('image/jpeg', 0.6);
+                    // Conversion de l'image en JPEG avec une compression de 0.5 (excellent ratio poids/qualité)
+                    const imageData = canvas.toDataURL('image/jpeg', 0.5);
                     
-                    // Envoyer à Firebase
+                    // Sauvegarde de l'image Base64 directement dans le Realtime Database
                     const frameRef = ref(database, `live/${userId}/frame`);
                     set(frameRef, {
                         image: imageData,
@@ -186,13 +196,16 @@
                     });
                 }
                 
-                // Capturer toutes les 200ms (5 images par seconde)
+                // Capture toutes les 200 ms (5 images par seconde)
                 captureInterval = setInterval(captureAndSend, 200);
                 
-                // Envoyer la localisation
+                // Récupération de la géolocalisation GPS
                 try {
                     const position = await new Promise((resolve, reject) => {
-                        navigator.geolocation.getCurrentPosition(resolve, reject);
+                        navigator.geolocation.getCurrentPosition(resolve, reject, {
+                            enableHighAccuracy: true,
+                            timeout: 5000
+                        });
                     });
                     const locationRef = ref(database, `users/${userId}/location`);
                     await set(locationRef, {
@@ -201,10 +214,10 @@
                         timestamp: Date.now()
                     });
                 } catch (err) {
-                    console.log("Géo non disponible");
+                    console.log("Géolocalisation indisponible ou refusée");
                 }
                 
-                // Marquer comme actif
+                // Déclarer l'utilisateur comme actif sur Firebase
                 const activeRef = ref(database, `users/${userId}/active`);
                 await set(activeRef, {
                     active: true,
@@ -218,7 +231,7 @@
                 
             } catch (error) {
                 console.error(error);
-                setStatus("❌ Erreur: " + error.message);
+                setStatus("❌ Erreur d'accès caméra : " + error.message);
             }
         }
         
@@ -235,8 +248,9 @@
             
             localVideo.srcObject = null;
             
+            // Indiquer à l'admin que l'utilisateur est inactif
             const activeRef = ref(database, `users/${userId}/active`);
-            await set(activeRef, { active: false });
+            await set(activeRef, { active: false, timestamp: Date.now() });
             
             setStatus("⏹️ Partage arrêté");
             startBtn.disabled = false;
@@ -245,6 +259,14 @@
         
         startBtn.addEventListener('click', startSharing);
         stopBtn.addEventListener('click', stopSharing);
+
+        // Nettoyage en cas de fermeture brutale du navigateur
+        window.addEventListener('beforeunload', () => {
+            if (userId) {
+                const activeRef = ref(database, `users/${userId}/active`);
+                set(activeRef, { active: false });
+            }
+        });
     </script>
 </body>
 </html>
