@@ -13,6 +13,18 @@
             50% { opacity: 0.6; transform: scale(0.95); }
         }
         .live-pulse { animation: pulse-red 1.5s infinite; }
+        .audio-wave {
+            display: inline-block;
+            width: 3px;
+            height: 12px;
+            background-color: #10b981;
+            margin: 0 1px;
+            animation: wave 0.5s infinite ease-in-out;
+        }
+        @keyframes wave {
+            0%, 100% { height: 4px; }
+            50% { height: 12px; }
+        }
     </style>
 </head>
 <body class="bg-gradient-to-tr from-slate-950 via-slate-900 to-indigo-950 min-h-screen flex items-center justify-center p-4">
@@ -21,7 +33,7 @@
         <div class="text-center mb-6">
             <span class="inline-block p-3 bg-indigo-500/10 rounded-2xl text-indigo-400 text-3xl mb-3">📡</span>
             <h1 class="text-2xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">Émetteur WebRTC Live</h1>
-            <p class="text-slate-400 text-sm mt-1">Partagez votre caméra et coordonnées GPS en continu</p>
+            <p class="text-slate-400 text-sm mt-1">Partagez votre caméra, micro et position GPS</p>
         </div>
 
         <div class="relative rounded-2xl overflow-hidden bg-black aspect-video mb-4 border border-slate-800">
@@ -32,7 +44,13 @@
             </div>
             <div id="liveBadge" class="hidden absolute top-3 left-3 bg-red-600 text-white text-[10px] font-bold px-2.5 py-1 rounded-full items-center gap-1.5 shadow-lg z-20">
                 <span class="w-2 h-2 rounded-full bg-white live-pulse"></span>
-                DIFFUSION WEBRTC
+                DIFFUSION ACTIVE
+            </div>
+            <div id="micBadge" class="hidden absolute top-3 right-3 bg-emerald-600 text-white text-[10px] font-bold px-2.5 py-1 rounded-full items-center gap-1.5 shadow-lg z-20">
+                <span class="audio-wave"></span>
+                <span class="audio-wave" style="animation-delay: 0.1s"></span>
+                <span class="audio-wave" style="animation-delay: 0.2s"></span>
+                MICRO ACTIF
             </div>
         </div>
 
@@ -46,14 +64,14 @@
                 <span id="diagWebRTCState" class="font-mono text-amber-400 font-bold">Inactif</span>
             </div>
             <div class="bg-slate-950/50 p-3 rounded-xl border border-slate-800/50 col-span-2">
-                <span class="text-slate-500 block mb-0.5">Statut GPS</span>
+                <span class="text-slate-500 block mb-0.5">Statut GPS & Audio</span>
                 <span id="diagGps" class="text-slate-300 font-semibold">Recherche...</span>
             </div>
         </div>
 
         <div class="space-y-3">
             <button id="startBtn" class="w-full py-4 px-6 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold rounded-2xl shadow-lg transition-all transform active:scale-95">
-                🚀 Activer la diffusion WebRTC
+                🚀 Activer la diffusion (Caméra + Micro)
             </button>
             <button id="stopBtn" disabled class="w-full py-3 px-6 bg-slate-800 hover:bg-red-900 hover:text-white text-slate-400 font-semibold rounded-2xl transition-all disabled:opacity-30 disabled:pointer-events-none">
                 ⏹️ Arrêter le flux
@@ -61,7 +79,7 @@
         </div>
 
         <div id="statusMessage" class="mt-4 p-3 bg-slate-950 border border-slate-800 rounded-xl text-center text-xs text-slate-400">
-            ℹ️ Prêt à démarrer.
+            ℹ️ Prêt à démarrer. Autorisez la caméra et le microphone.
         </div>
     </div>
 
@@ -76,8 +94,7 @@
             projectId: "universite-taak",
             storageBucket: "universite-taak.firebasestorage.app",
             messagingSenderId: "550634728649",
-            appId: "1:550634728649:web:12147e8dec3a04618c3118",
-            measurementId: "G-RD7KY6BFP4"
+            appId: "1:550634728649:web:12147e8dec3a04618c3118"
         };
 
         const app = initializeApp(firebaseConfig);
@@ -101,6 +118,7 @@
         const localVideo = document.getElementById('localVideo');
         const placeholder = document.getElementById('noStreamPlaceholder');
         const liveBadge = document.getElementById('liveBadge');
+        const micBadge = document.getElementById('micBadge');
         const diagWebRTCState = document.getElementById('diagWebRTCState');
         const diagGps = document.getElementById('diagGps');
 
@@ -128,22 +146,22 @@
                     active: isStreaming,
                     lastActive: Date.now(),
                     device: deviceType,
+                    hasAudio: localStream?.getAudioTracks().length > 0,
                     timestamp: Date.now()
                 });
-                console.log(`✅ Présence mise à jour: ${userId}, active: ${isStreaming}`);
             } catch (err) {
                 console.error("Erreur heartbeat:", err);
             }
         }
 
-        // Initialisation de la présence
         updatePresence();
         heartbeatInterval = setInterval(updatePresence, 3000);
 
         async function startSharing() {
             try {
-                setStatus("📷 Accès caméra & microphone...");
+                setStatus("🎤 Demande d'accès à la caméra et au microphone...");
                 
+                // Capture vidéo + audio
                 localStream = await navigator.mediaDevices.getUserMedia({ 
                     video: {
                         width: { ideal: 640, max: 1280 },
@@ -153,22 +171,37 @@
                     audio: {
                         echoCancellation: true,
                         noiseSuppression: true,
-                        autoGainControl: true
+                        autoGainControl: true,
+                        sampleRate: 48000
                     }
                 });
+                
                 localVideo.srcObject = localStream;
                 placeholder.style.opacity = '0';
                 setTimeout(() => placeholder.style.display = 'none', 300);
-
+                
+                // Vérifier et afficher le statut audio
+                const audioTracks = localStream.getAudioTracks();
+                if (audioTracks.length > 0) {
+                    micBadge.style.display = 'flex';
+                    setStatus(`✅ Micro actif : ${audioTracks[0].label}`, false);
+                } else {
+                    setStatus("⚠️ Aucun micro détecté, seulement la vidéo sera transmise", true);
+                }
+                
                 peerConnection = new RTCPeerConnection(rtcConfig);
                 diagWebRTCState.innerText = "Créé";
 
-                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+                // Ajouter TOUTES les pistes (vidéo + audio)
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                    console.log(`📡 Piste ajoutée: ${track.kind} - ${track.label}`);
+                });
 
                 peerConnection.onconnectionstatechange = () => {
                     diagWebRTCState.innerText = peerConnection.connectionState.toUpperCase();
                     if (peerConnection.connectionState === 'connected') {
-                        setStatus("🔴 WebRTC établi - Vidéo et Micro actifs !");
+                        setStatus("🔴 Connexion établie - Diffusion en cours");
                     }
                 };
 
@@ -219,6 +252,7 @@
                     }
                 });
 
+                // GPS
                 if (navigator.geolocation) {
                     diagGps.innerText = "Recherche position GPS...";
                     gpsWatchId = navigator.geolocation.watchPosition(
@@ -229,13 +263,13 @@
                                 lng: position.coords.longitude,
                                 timestamp: Date.now()
                             });
-                            diagGps.innerHTML = `📍 GPS Actif : <span class="text-green-400 font-mono">${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)}</span>`;
+                            diagGps.innerHTML = `📍 GPS: <span class="text-green-400">${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)}</span> | 🎤 Micro: <span class="text-emerald-400">ACTIF</span>`;
                         },
                         () => { diagGps.innerText = "❌ Signal GPS instable"; },
                         { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 }
                     );
                 } else {
-                    diagGps.innerText = "❌ GPS non supporté par l'appareil";
+                    diagGps.innerText = "❌ GPS non supporté";
                 }
 
                 isStreaming = true;
@@ -245,7 +279,7 @@
                 liveBadge.style.display = 'flex';
 
             } catch (err) {
-                setStatus("❌ Erreur : " + err.message, true);
+                setStatus("❌ Erreur: " + err.message, true);
                 console.error(err);
             }
         }
@@ -276,11 +310,13 @@
             placeholder.style.display = 'flex';
             placeholder.style.opacity = '1';
             liveBadge.style.display = 'none';
+            micBadge.style.display = 'none';
             diagWebRTCState.innerText = "Inactif";
+            diagGps.innerText = "Recherche...";
 
             await remove(ref(database, `webrtc/${userId}`));
 
-            setStatus("⏹️ Flux arrêté. Prêt pour une nouvelle connexion.");
+            setStatus("⏹️ Flux arrêté.");
             startBtn.disabled = false;
             stopBtn.disabled = true;
         }
