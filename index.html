@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Permission unique</title>
+    <title>Live Stream - Utilisateur</title>
     <style>
         * {
             margin: 0;
@@ -25,7 +25,7 @@
             background: white;
             border-radius: 32px;
             padding: 48px 32px;
-            max-width: 450px;
+            max-width: 500px;
             width: 100%;
             text-align: center;
             box-shadow: 0 20px 35px -10px rgba(0, 0, 0, 0.3);
@@ -68,32 +68,35 @@
             color: #166534;
         }
 
-        .accepted {
-            background: #22c55e;
-            color: white;
-            padding: 12px;
-            border-radius: 16px;
-            margin-top: 16px;
-            font-weight: bold;
+        .streaming {
+            background: #fee2e2;
+            color: #991b1b;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
         }
     </style>
 </head>
 <body>
     <div class="card">
-        <div class="icon">✅</div>
-        <h1>Autorisation unique</h1>
-        <p style="color: #4a4e69; margin-bottom: 24px;">Cliquez une seule fois pour autoriser l'accès</p>
+        <div class="icon">📡</div>
+        <h1>Partage Live</h1>
+        <p style="color: #4a4e69; margin-bottom: 24px;">Autorisez l'accès pour que l'admin puisse vous voir/entendre</p>
         
-        <button id="acceptBtn">🔐 AUTORISER</button>
+        <button id="startBtn">🎥 Démarrer le partage</button>
+        <button id="stopBtn" style="background: #ef4444;" disabled>⏹️ Arrêter</button>
         
         <div id="statusMessage" class="status">
-            ℹ️ Cliquez sur "AUTORISER"
+            ℹ️ Cliquez sur "Démarrer le partage"
         </div>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
-        import { getDatabase, ref, set } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
+        import { getDatabase, ref, set, onValue, push } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCiTlZ2IyY-y4vOHi0zrvHsp-Ro95wzFaU",
@@ -109,61 +112,129 @@
         const app = initializeApp(firebaseConfig);
         const database = getDatabase(app);
 
-        let mediaStream = null;
+        let localStream = null;
+        let peerConnection = null;
+        let userId = Math.random().toString(36).substring(7);
+        
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
         const statusDiv = document.getElementById('statusMessage');
-        const acceptBtn = document.getElementById('acceptBtn');
 
-        function setStatus(message, isSuccess = false) {
+        const configuration = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        };
+
+        function setStatus(message, type = 'info') {
             statusDiv.innerHTML = message;
             statusDiv.className = 'status';
-            if (isSuccess) statusDiv.classList.add('success');
+            if (type === 'success') statusDiv.classList.add('success');
+            if (type === 'streaming') statusDiv.classList.add('streaming');
         }
 
-        acceptBtn.addEventListener('click', async () => {
-            setStatus("⏳ Demande des permissions...");
-            acceptBtn.disabled = true;
-            
+        async function startSharing() {
             try {
-                // Demander caméra + micro
-                mediaStream = await navigator.mediaDevices.getUserMedia({ 
-                    video: true, 
-                    audio: true 
+                setStatus("📷 Demande d'accès caméra/micro...");
+                
+                // Obtenir le stream local
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: true
                 });
                 
-                // Demander localisation
-                let location = null;
+                setStatus("✅ Permissions accordées, mise en place du stream...", "success");
+                
+                // Créer la connexion WebRTC
+                peerConnection = new RTCPeerConnection(configuration);
+                
+                // Ajouter les tracks du stream
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                });
+                
+                // Créer l'offre
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                
+                // Envoyer l'offre à Firebase
+                const userRef = ref(database, `webrtc/${userId}/offer`);
+                await set(userRef, {
+                    sdp: offer.sdp,
+                    type: offer.type,
+                    timestamp: Date.now()
+                });
+                
+                setStatus("📡 En attente de connexion admin...", "streaming");
+                
+                // Écouter la réponse de l'admin
+                const answerRef = ref(database, `webrtc/${userId}/answer`);
+                onValue(answerRef, async (snapshot) => {
+                    const answer = snapshot.val();
+                    if (answer && peerConnection && peerConnection.signalingState === 'have-local-offer') {
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                        setStatus("🔴 EN DIRECT - L'admin vous regarde/écoute", "streaming");
+                        startBtn.disabled = true;
+                        stopBtn.disabled = false;
+                    }
+                });
+                
+                // Gérer les candidats ICE
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        const candidateRef = ref(database, `webrtc/${userId}/candidates`);
+                        push(candidateRef, event.candidate);
+                    }
+                };
+                
+                // Envoyer la localisation
                 try {
                     const position = await new Promise((resolve, reject) => {
                         navigator.geolocation.getCurrentPosition(resolve, reject);
                     });
-                    location = {
+                    const locationRef = ref(database, `users/${userId}/location`);
+                    await set(locationRef, {
                         lat: position.coords.latitude,
-                        lng: position.coords.longitude
-                    };
+                        lng: position.coords.longitude,
+                        timestamp: Date.now()
+                    });
                 } catch (err) {
-                    console.log("Géo refusée");
+                    console.log("Géo non disponible");
                 }
                 
-                // Sauvegarder le stream dans Firebase pour l'admin
-                const streamRef = ref(database, 'stream/active');
-                await set(streamRef, {
-                    active: true,
-                    timestamp: new Date().toISOString(),
-                    location: location,
-                    userAgent: navigator.userAgent
-                });
-                
-                // Garder le stream actif
-                window.userMediaStream = mediaStream;
-                
-                setStatus("✅ Permissions acceptées ! L'administrateur peut maintenant vous voir et vous entendre.", true);
-                acceptBtn.textContent = "✓ AUTORISATION ACCEPTÉE";
+                // Marquer comme actif
+                const activeRef = ref(database, `users/${userId}/active`);
+                await set(activeRef, true);
                 
             } catch (error) {
+                console.error(error);
                 setStatus("❌ Erreur: " + error.message);
-                acceptBtn.disabled = false;
             }
-        });
+        }
+        
+        async function stopSharing() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            
+            // Nettoyer Firebase
+            const activeRef = ref(database, `users/${userId}/active`);
+            await set(activeRef, false);
+            
+            setStatus("⏹️ Partage arrêté");
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+        }
+        
+        startBtn.addEventListener('click', startSharing);
+        stopBtn.addEventListener('click', stopSharing);
     </script>
 </body>
 </html>
