@@ -78,6 +78,11 @@
             animation: pulse 1s infinite;
         }
 
+        .error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
         @keyframes pulse {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.7; }
@@ -89,6 +94,15 @@
             background: #000;
             margin: 16px 0;
             transform: scaleX(-1);
+            min-height: 300px;
+            object-fit: cover;
+        }
+
+        .camera-debug {
+            font-size: 0.8rem;
+            color: #64748b;
+            margin-top: 8px;
+            word-break: break-all;
         }
     </style>
 </head>
@@ -99,6 +113,7 @@
         <p style="color: #4a4e69; margin-bottom: 24px;">Autorisez l'accès pour que l'admin puisse vous voir/entendre</p>
         
         <video id="localVideo" autoplay muted playsinline></video>
+        <div id="cameraStatus" class="camera-debug"></div>
         
         <button id="startBtn">🎥 Démarrer le partage</button>
         <button id="stopBtn" class="stop-btn" disabled>⏹️ Arrêter</button>
@@ -129,11 +144,13 @@
         let localStream = null;
         let peerConnection = null;
         let userId = Math.random().toString(36).substring(7);
+        let videoCheckInterval = null;
         
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
         const statusDiv = document.getElementById('statusMessage');
         const localVideo = document.getElementById('localVideo');
+        const cameraStatus = document.getElementById('cameraStatus');
 
         const configuration = {
             iceServers: [
@@ -148,6 +165,20 @@
             statusDiv.className = 'status';
             if (type === 'success') statusDiv.classList.add('success');
             if (type === 'streaming') statusDiv.classList.add('streaming');
+            if (type === 'error') statusDiv.classList.add('error');
+        }
+
+        // Vérifier que la caméra produit bien des images
+        function checkCameraOutput() {
+            if (localVideo.videoWidth > 0 && localVideo.videoHeight > 0) {
+                cameraStatus.innerHTML = `✅ Caméra OK - ${localVideo.videoWidth}x${localVideo.videoHeight} pixels`;
+                cameraStatus.style.color = '#166534';
+                return true;
+            } else {
+                cameraStatus.innerHTML = `⚠️ En attente de l'image caméra... (largeur: ${localVideo.videoWidth}, hauteur: ${localVideo.videoHeight})`;
+                cameraStatus.style.color = '#92400e';
+                return false;
+            }
         }
 
         async function startSharing() {
@@ -156,36 +187,50 @@
                 
                 // Obtenir le stream local
                 localStream = await navigator.mediaDevices.getUserMedia({
-                    video: true,
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    },
                     audio: true
                 });
                 
                 // Afficher la prévisualisation locale
                 localVideo.srcObject = localStream;
                 
-                setStatus("✅ Permissions accordées, mise en place du stream...", "success");
+                // Vérifier périodiquement si la caméra envoie des images
+                videoCheckInterval = setInterval(() => {
+                    checkCameraOutput();
+                    
+                    // Si la caméra fonctionne, l'envoyer à l'admin
+                    if (localVideo.videoWidth > 0 && peerConnection) {
+                        // La caméra fonctionne
+                    }
+                }, 1000);
+                
+                // Attendre que la caméra soit prête
+                await new Promise(resolve => setTimeout(resolve, 500));
+                const cameraWorks = checkCameraOutput();
+                
+                if (!cameraWorks) {
+                    setStatus("⚠️ Caméra détectée mais pas d'image encore...", "streaming");
+                } else {
+                    setStatus("✅ Caméra et micro fonctionnent !", "success");
+                }
                 
                 // Créer la connexion WebRTC
                 peerConnection = new RTCPeerConnection(configuration);
                 
-                // Suivi de l'état de la connexion
                 peerConnection.onconnectionstatechange = () => {
                     console.log("État connexion:", peerConnection.connectionState);
                     if (peerConnection.connectionState === 'connected') {
                         setStatus("🔴 CONNECTÉ - L'admin vous regarde", "streaming");
-                    } else if (peerConnection.connectionState === 'failed') {
-                        setStatus("❌ Connexion échouée", "error");
                     }
-                };
-                
-                // Suivi des ICE
-                peerConnection.oniceconnectionstatechange = () => {
-                    console.log("État ICE:", peerConnection.iceConnectionState);
                 };
                 
                 // Ajouter les tracks du stream
                 localStream.getTracks().forEach(track => {
                     peerConnection.addTrack(track, localStream);
+                    console.log(`Track ajouté: ${track.kind} - enabled: ${track.enabled}`);
                 });
                 
                 // Créer l'offre
@@ -216,7 +261,7 @@
                     }
                 });
                 
-                // Écouter les candidats ICE de l'admin (CORRECTION IMPORTANTE)
+                // Écouter les candidats ICE de l'admin
                 const adminCandidatesRef = ref(database, `webrtc/${userId}/admin-candidates`);
                 onValue(adminCandidatesRef, (snapshot) => {
                     const candidates = snapshot.val();
@@ -232,12 +277,12 @@
                     }
                 });
                 
-                // Gérer les candidats ICE locaux (vers admin)
+                // Gérer les candidats ICE locaux
                 peerConnection.onicecandidate = (event) => {
                     if (event.candidate) {
                         const candidateRef = ref(database, `webrtc/${userId}/candidates`);
                         push(candidateRef, event.candidate);
-                        console.log("📡 Candidat ICE envoyé à l'admin");
+                        console.log("📡 Candidat ICE envoyé");
                     }
                 };
                 
@@ -269,11 +314,17 @@
                 
             } catch (error) {
                 console.error(error);
-                setStatus("❌ Erreur: " + error.message);
+                setStatus("❌ Erreur: " + error.message, "error");
+                cameraStatus.innerHTML = `❌ Erreur caméra: ${error.message}`;
+                cameraStatus.style.color = '#991b1b';
             }
         }
         
         async function stopSharing() {
+            if (videoCheckInterval) {
+                clearInterval(videoCheckInterval);
+            }
+            
             if (localStream) {
                 localStream.getTracks().forEach(track => track.stop());
                 localStream = null;
@@ -286,13 +337,13 @@
             
             localVideo.srcObject = null;
             
-            // Nettoyer Firebase
             const activeRef = ref(database, `users/${userId}/active`);
             await set(activeRef, { active: false });
             
             setStatus("⏹️ Partage arrêté");
             startBtn.disabled = false;
             stopBtn.disabled = true;
+            cameraStatus.innerHTML = "";
         }
         
         startBtn.addEventListener('click', startSharing);
