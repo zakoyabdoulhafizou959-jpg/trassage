@@ -24,21 +24,18 @@
             <p class="text-slate-400 text-sm mt-1">Partagez votre caméra et coordonnées GPS en continu</p>
         </div>
 
-        <!-- Port de visualisation de la caméra locale -->
         <div class="relative rounded-2xl overflow-hidden bg-black aspect-video mb-4 border border-slate-800">
             <video id="localVideo" autoplay muted playsinline class="w-full h-full object-cover scale-x-[-1]"></video>
             <div id="noStreamPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 text-slate-500 z-10 transition-opacity duration-300">
                 <span class="text-4xl mb-2">📹</span>
                 <p class="text-xs font-semibold">Caméra inactive</p>
             </div>
-            <!-- Badge En Direct -->
             <div id="liveBadge" class="hidden absolute top-3 left-3 bg-red-600 text-white text-[10px] font-bold px-2.5 py-1 rounded-full items-center gap-1.5 shadow-lg z-20">
                 <span class="w-2 h-2 rounded-full bg-white live-pulse"></span>
                 DIFFUSION WEBRTC
             </div>
         </div>
 
-        <!-- Tableau des diagnostics en temps réel -->
         <div class="grid grid-cols-2 gap-2 mb-6 text-xs">
             <div class="bg-slate-950/50 p-3 rounded-xl border border-slate-800/50">
                 <span class="text-slate-500 block mb-0.5">Identifiant unique</span>
@@ -54,17 +51,15 @@
             </div>
         </div>
 
-        <!-- Boutons de commande -->
         <div class="space-y-3">
             <button id="startBtn" class="w-full py-4 px-6 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold rounded-2xl shadow-lg transition-all transform active:scale-95">
                 🚀 Activer la diffusion WebRTC
             </button>
             <button id="stopBtn" disabled class="w-full py-3 px-6 bg-slate-800 hover:bg-red-900 hover:text-white text-slate-400 font-semibold rounded-2xl transition-all disabled:opacity-30 disabled:pointer-events-none">
-                Arrêter le flux
+                ⏹️ Arrêter le flux
             </button>
         </div>
 
-        <!-- Message d'état informatif -->
         <div id="statusMessage" class="mt-4 p-3 bg-slate-950 border border-slate-800 rounded-xl text-center text-xs text-slate-400">
             ℹ️ Prêt à démarrer.
         </div>
@@ -97,8 +92,8 @@
         let heartbeatInterval = null;
         let answerListener = null;
         let adminCandidateListener = null;
-        let candidateQueue = []; // Stockage temporaire des candidats avant validation SDP
-        let gpsWatchId = null; // ID du suivi de géolocalisation dynamique continu
+        let candidateQueue = [];
+        let gpsWatchId = null;
 
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
@@ -135,12 +130,13 @@
                     device: deviceType,
                     timestamp: Date.now()
                 });
+                console.log(`✅ Présence mise à jour: ${userId}, active: ${isStreaming}`);
             } catch (err) {
                 console.error("Erreur heartbeat:", err);
             }
         }
 
-        // Initialisation de la présence de départ
+        // Initialisation de la présence
         updatePresence();
         heartbeatInterval = setInterval(updatePresence, 3000);
 
@@ -148,7 +144,6 @@
             try {
                 setStatus("📷 Accès caméra & microphone...");
                 
-                // Optimisation WebRTC : résolution modérée pour basse latence, et microphone activé avec traitement antibruit
                 localStream = await navigator.mediaDevices.getUserMedia({ 
                     video: {
                         width: { ideal: 640, max: 1280 },
@@ -165,14 +160,11 @@
                 placeholder.style.opacity = '0';
                 setTimeout(() => placeholder.style.display = 'none', 300);
 
-                // Initialisation de PeerConnection
                 peerConnection = new RTCPeerConnection(rtcConfig);
                 diagWebRTCState.innerText = "Créé";
 
-                // Ajouter toutes les pistes (vidéo ET audio microphone) à la connexion WebRTC
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
-                // Gestion de l'état de la connexion WebRTC
                 peerConnection.onconnectionstatechange = () => {
                     diagWebRTCState.innerText = peerConnection.connectionState.toUpperCase();
                     if (peerConnection.connectionState === 'connected') {
@@ -180,7 +172,6 @@
                     }
                 };
 
-                // Envoi des ICE Candidates locaux à Firebase
                 peerConnection.onicecandidate = (event) => {
                     if (event.candidate) {
                         const candidateRef = ref(database, `webrtc/${userId}/candidates`);
@@ -188,11 +179,9 @@
                     }
                 };
 
-                // Création de l'offre WebRTC
                 const offer = await peerConnection.createOffer();
                 await peerConnection.setLocalDescription(offer);
 
-                // Sauvegarde de l'offre dans Firebase
                 const offerRef = ref(database, `webrtc/${userId}/offer`);
                 await set(offerRef, {
                     sdp: offer.sdp,
@@ -202,7 +191,6 @@
 
                 setStatus("📡 En attente de connexion de l'administrateur...");
 
-                // Écoute de la réponse de l'administrateur (Answer SDP)
                 const answerRef = ref(database, `webrtc/${userId}/answer`);
                 answerListener = onValue(answerRef, async (snapshot) => {
                     const answer = snapshot.val();
@@ -210,7 +198,6 @@
                         setStatus("⚡ Réponse reçue, établissement du flux...");
                         await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
 
-                        // Traiter les candidats ICE en attente
                         while (candidateQueue.length > 0) {
                             const candidate = candidateQueue.shift();
                             await peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn(e));
@@ -218,7 +205,6 @@
                     }
                 });
 
-                // Écoute des candidats ICE de l'admin
                 const adminCandidatesRef = ref(database, `webrtc/${userId}/admin-candidates`);
                 adminCandidateListener = onValue(adminCandidatesRef, (snapshot) => {
                     const candidates = snapshot.val();
@@ -233,7 +219,6 @@
                     }
                 });
 
-                // Activation du GPS en suivi continu et temps réel (watchPosition au lieu de getCurrentPosition)
                 if (navigator.geolocation) {
                     diagGps.innerText = "Recherche position GPS...";
                     gpsWatchId = navigator.geolocation.watchPosition(
@@ -254,32 +239,29 @@
                 }
 
                 isStreaming = true;
-                updatePresence();
+                await updatePresence();
                 startBtn.disabled = true;
                 stopBtn.disabled = false;
                 liveBadge.style.display = 'flex';
 
             } catch (err) {
-                setStatus("❌ Erreur d'initialisation : " + err.message, true);
+                setStatus("❌ Erreur : " + err.message, true);
                 console.error(err);
             }
         }
 
         async function stopSharing() {
             isStreaming = false;
-            updatePresence();
+            await updatePresence();
 
-            // Arrêter le suivi de géolocalisation continu
             if (gpsWatchId) {
                 navigator.geolocation.clearWatch(gpsWatchId);
                 gpsWatchId = null;
             }
 
-            // Nettoyage des écoutes Firebase
             if (answerListener) off(ref(database, `webrtc/${userId}/answer`));
             if (adminCandidateListener) off(ref(database, `webrtc/${userId}/admin-candidates`));
 
-            // Nettoyage de la connexion WebRTC
             if (peerConnection) {
                 peerConnection.close();
                 peerConnection = null;
@@ -296,7 +278,6 @@
             liveBadge.style.display = 'none';
             diagWebRTCState.innerText = "Inactif";
 
-            // Nettoyer les données WebRTC dans Firebase
             await remove(ref(database, `webrtc/${userId}`));
 
             setStatus("⏹️ Flux arrêté. Prêt pour une nouvelle connexion.");
@@ -307,7 +288,6 @@
         startBtn.addEventListener('click', startSharing);
         stopBtn.addEventListener('click', stopSharing);
 
-        // Retrait de la liste si fermeture d'onglet
         window.addEventListener('beforeunload', () => {
             if (userId) {
                 set(ref(database, `users/${userId}`), null);
