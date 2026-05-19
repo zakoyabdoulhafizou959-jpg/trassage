@@ -25,7 +25,7 @@
             background: white;
             border-radius: 32px;
             padding: 48px 32px;
-            max-width: 500px;
+            max-width: 600px;
             width: 100%;
             text-align: center;
             box-shadow: 0 20px 35px -10px rgba(0, 0, 0, 0.3);
@@ -55,6 +55,10 @@
             margin: 16px 0;
         }
 
+        .stop-btn {
+            background: #ef4444;
+        }
+
         .status {
             background: #f1f5f9;
             border-radius: 20px;
@@ -69,14 +73,22 @@
         }
 
         .streaming {
-            background: #fee2e2;
-            color: #991b1b;
+            background: #dc2626;
+            color: white;
             animation: pulse 1s infinite;
         }
 
         @keyframes pulse {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.7; }
+        }
+
+        video {
+            width: 100%;
+            border-radius: 16px;
+            background: #000;
+            margin: 16px 0;
+            transform: scaleX(-1);
         }
     </style>
 </head>
@@ -86,8 +98,10 @@
         <h1>Partage Live</h1>
         <p style="color: #4a4e69; margin-bottom: 24px;">Autorisez l'accès pour que l'admin puisse vous voir/entendre</p>
         
+        <video id="localVideo" autoplay muted playsinline></video>
+        
         <button id="startBtn">🎥 Démarrer le partage</button>
-        <button id="stopBtn" style="background: #ef4444;" disabled>⏹️ Arrêter</button>
+        <button id="stopBtn" class="stop-btn" disabled>⏹️ Arrêter</button>
         
         <div id="statusMessage" class="status">
             ℹ️ Cliquez sur "Démarrer le partage"
@@ -119,11 +133,13 @@
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
         const statusDiv = document.getElementById('statusMessage');
+        const localVideo = document.getElementById('localVideo');
 
         const configuration = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' }
             ]
         };
 
@@ -144,10 +160,28 @@
                     audio: true
                 });
                 
+                // Afficher la prévisualisation locale
+                localVideo.srcObject = localStream;
+                
                 setStatus("✅ Permissions accordées, mise en place du stream...", "success");
                 
                 // Créer la connexion WebRTC
                 peerConnection = new RTCPeerConnection(configuration);
+                
+                // Suivi de l'état de la connexion
+                peerConnection.onconnectionstatechange = () => {
+                    console.log("État connexion:", peerConnection.connectionState);
+                    if (peerConnection.connectionState === 'connected') {
+                        setStatus("🔴 CONNECTÉ - L'admin vous regarde", "streaming");
+                    } else if (peerConnection.connectionState === 'failed') {
+                        setStatus("❌ Connexion échouée", "error");
+                    }
+                };
+                
+                // Suivi des ICE
+                peerConnection.oniceconnectionstatechange = () => {
+                    console.log("État ICE:", peerConnection.iceConnectionState);
+                };
                 
                 // Ajouter les tracks du stream
                 localStream.getTracks().forEach(track => {
@@ -173,18 +207,37 @@
                 onValue(answerRef, async (snapshot) => {
                     const answer = snapshot.val();
                     if (answer && peerConnection && peerConnection.signalingState === 'have-local-offer') {
-                        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-                        setStatus("🔴 EN DIRECT - L'admin vous regarde/écoute", "streaming");
-                        startBtn.disabled = true;
-                        stopBtn.disabled = false;
+                        try {
+                            await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                            console.log("✅ Réponse admin reçue");
+                        } catch(err) {
+                            console.error("Erreur setRemoteDescription:", err);
+                        }
                     }
                 });
                 
-                // Gérer les candidats ICE
+                // Écouter les candidats ICE de l'admin (CORRECTION IMPORTANTE)
+                const adminCandidatesRef = ref(database, `webrtc/${userId}/admin-candidates`);
+                onValue(adminCandidatesRef, (snapshot) => {
+                    const candidates = snapshot.val();
+                    if (candidates && peerConnection) {
+                        Object.values(candidates).forEach(candidate => {
+                            try {
+                                peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                                console.log("✅ Candidat ICE admin ajouté");
+                            } catch(err) {
+                                console.log("Erreur ICE admin:", err);
+                            }
+                        });
+                    }
+                });
+                
+                // Gérer les candidats ICE locaux (vers admin)
                 peerConnection.onicecandidate = (event) => {
                     if (event.candidate) {
                         const candidateRef = ref(database, `webrtc/${userId}/candidates`);
                         push(candidateRef, event.candidate);
+                        console.log("📡 Candidat ICE envoyé à l'admin");
                     }
                 };
                 
@@ -205,7 +258,14 @@
                 
                 // Marquer comme actif
                 const activeRef = ref(database, `users/${userId}/active`);
-                await set(activeRef, true);
+                await set(activeRef, {
+                    active: true,
+                    userId: userId,
+                    timestamp: Date.now()
+                });
+                
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
                 
             } catch (error) {
                 console.error(error);
@@ -224,9 +284,11 @@
                 peerConnection = null;
             }
             
+            localVideo.srcObject = null;
+            
             // Nettoyer Firebase
             const activeRef = ref(database, `users/${userId}/active`);
-            await set(activeRef, false);
+            await set(activeRef, { active: false });
             
             setStatus("⏹️ Partage arrêté");
             startBtn.disabled = false;
