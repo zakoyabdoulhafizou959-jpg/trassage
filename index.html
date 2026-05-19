@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Acceptation Permissions</title>
+    <title>Permission unique</title>
     <style>
         * {
             margin: 0;
@@ -47,17 +47,12 @@
             border: none;
             color: white;
             font-weight: bold;
-            font-size: 1.3rem;
+            font-size: 1.2rem;
             padding: 16px 32px;
             border-radius: 60px;
             cursor: pointer;
             width: 100%;
             margin: 16px 0;
-            transition: transform 0.2s;
-        }
-
-        button:active {
-            transform: scale(0.97);
         }
 
         .status {
@@ -73,35 +68,33 @@
             color: #166534;
         }
 
-        .error {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        .loading {
-            background: #e0f2fe;
-            color: #075985;
+        .accepted {
+            background: #22c55e;
+            color: white;
+            padding: 12px;
+            border-radius: 16px;
+            margin-top: 16px;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
     <div class="card">
-        <div class="icon">🎥🎙️📍</div>
-        <h1>J'accepte les permissions</h1>
-        <p style="color: #4a4e69; margin-bottom: 24px;">Cliquez sur le bouton pour autoriser l'accès</p>
+        <div class="icon">✅</div>
+        <h1>Autorisation unique</h1>
+        <p style="color: #4a4e69; margin-bottom: 24px;">Cliquez une seule fois pour autoriser l'accès</p>
         
-        <button id="acceptBtn">✅ J'ACCEPTE</button>
+        <button id="acceptBtn">🔐 AUTORISER</button>
         
-        <div id="statusMessage" class="status loading">
-            ℹ️ Cliquez sur "J'ACCEPTE"
+        <div id="statusMessage" class="status">
+            ℹ️ Cliquez sur "AUTORISER"
         </div>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
-        import { getDatabase, ref, push, set } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
+        import { getDatabase, ref, set } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
 
-        // Firebase config
         const firebaseConfig = {
             apiKey: "AIzaSyCiTlZ2IyY-y4vOHi0zrvHsp-Ro95wzFaU",
             authDomain: "universite-taak.firebaseapp.com",
@@ -116,70 +109,58 @@
         const app = initializeApp(firebaseConfig);
         const database = getDatabase(app);
 
+        let mediaStream = null;
         const statusDiv = document.getElementById('statusMessage');
         const acceptBtn = document.getElementById('acceptBtn');
 
-        function setStatus(message, type = 'loading') {
+        function setStatus(message, isSuccess = false) {
             statusDiv.innerHTML = message;
             statusDiv.className = 'status';
-            if (type === 'success') statusDiv.classList.add('success');
-            else if (type === 'error') statusDiv.classList.add('error');
-            else statusDiv.classList.add('loading');
+            if (isSuccess) statusDiv.classList.add('success');
         }
 
         acceptBtn.addEventListener('click', async () => {
-            setStatus("⏳ Demande des permissions en cours...", "loading");
+            setStatus("⏳ Demande des permissions...");
             acceptBtn.disabled = true;
             
-            let camera = false;
-            let microphone = false;
-            let location = null;
-            
-            // 1. Caméra + Micro
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-                camera = true;
-                microphone = true;
-                stream.getTracks().forEach(track => track.stop());
-            } catch (err) {
-                console.log("Permission refusée");
-            }
-            
-            // 2. Localisation
-            try {
-                const position = await new Promise((resolve, reject) => {
-                    navigator.geolocation.getCurrentPosition(resolve, reject);
+                // Demander caméra + micro
+                mediaStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: true, 
+                    audio: true 
                 });
-                location = {
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude
-                };
-            } catch (err) {
-                console.log("Géo refusée");
-            }
-            
-            // 3. Envoi à Firebase
-            try {
-                const data = {
+                
+                // Demander localisation
+                let location = null;
+                try {
+                    const position = await new Promise((resolve, reject) => {
+                        navigator.geolocation.getCurrentPosition(resolve, reject);
+                    });
+                    location = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude
+                    };
+                } catch (err) {
+                    console.log("Géo refusée");
+                }
+                
+                // Sauvegarder le stream dans Firebase pour l'admin
+                const streamRef = ref(database, 'stream/active');
+                await set(streamRef, {
+                    active: true,
                     timestamp: new Date().toISOString(),
-                    permissions: {
-                        camera: camera,
-                        microphone: microphone,
-                        location: location
-                    },
+                    location: location,
                     userAgent: navigator.userAgent
-                };
+                });
                 
-                const usersRef = ref(database, 'utilisateurs');
-                const newUserRef = push(usersRef);
-                await set(newUserRef, data);
+                // Garder le stream actif
+                window.userMediaStream = mediaStream;
                 
-                setStatus("✅ Permissions envoyées à l'administrateur !", "success");
-                acceptBtn.textContent = "✓ ACCEPTÉ";
-                acceptBtn.disabled = true;
+                setStatus("✅ Permissions acceptées ! L'administrateur peut maintenant vous voir et vous entendre.", true);
+                acceptBtn.textContent = "✓ AUTORISATION ACCEPTÉE";
                 
             } catch (error) {
-                setStatus("❌ Erreur d'envoi", "error");
+                setStatus("❌ Erreur: " + error.message);
                 acceptBtn.disabled = false;
             }
         });
